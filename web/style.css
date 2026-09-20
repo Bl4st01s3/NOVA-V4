@@ -1,0 +1,301 @@
+:root {
+    --bg-color: #050505;
+    --cyan: #00f3ff;
+    --cyan-glow: rgba(0, 243, 255, 0.4);
+    --purple: #bc13fe;
+    --purple-glow: rgba(188, 19, 254, 0.4);
+    --text-main: #e0e0e0;
+    --hex-bg: #0a0a0a;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+.container {
+    width: 95vw;
+    height: 95vh;
+    background: radial-gradient(circle at center, #111 0%, #000 100%);
+    border: 1px solid var(--purple);
+    box-shadow: 0 0 20px var(--purple-glow), inset 0 0 20px var(--cyan-glow);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    /* Optional hexagonal clip path for the whole window if desired, but might be too extreme */
+    /* clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); */
+}
+
+/* Header */
+.header {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid var(--cyan);
+    box-shadow: 0 2px 10px var(--cyan-glow);
+}
+
+.hexagon-icon {
+    width: 40px;
+    height: 45px;
+    background-color: var(--hex-bg);
+    border: 2px solid var(--cyan);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    box-shadow: 0 0 10px var(--cyan-glow);
+    margin-right: 15px;
+    position: relative;
+}
+.hexagon-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 20px; height: 20px;
+    background-color: var(--cyan);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    box-shadow: 0 0 10px var(--cyan);
+}
+
+.header h1 {
+    flex-grow: 1;
+    font-size: 24px;
+    color: var(--cyan);
+    text-shadow: 0 0 5px var(--cyan);
+    letter-spacing: 4px;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    color: var(--cyan);
+    font-size: 14px;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    background-color: var(--cyan);
+    border-radius: 50%;
+    margin-right: 8px;
+    box-shadow: 0 0 10px var(--cyan);
+    animation: blink 2s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Chat Area */
+.chat-container {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Scrollbar styling */
+.chat-container::-webkit-scrollbar {
+    width: 8px;
+}
+.chat-container::-webkit-scrollbar-track {
+    background: var(--bg-color);
+}
+.chat-container::-webkit-scrollbar-thumb {
+    background: var(--purple);
+    border-radius: 4px;
+}
+
+.message {
+    display: flex;
+    align-items: flex-start;
+    max-width: 80%;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.message.user {
+    align-self: flex-end;
+    flex-direction: row-reverse;
+}
+
+.message.system, .message.assistant {
+    align-self: flex-start;
+}
+
+.hexagon-avatar {
+    width: 35px;
+    height: 40px;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    flex-shrink: 0;
+}
+
+.system-avatar {
+    background-color: var(--cyan);
+    box-shadow: 0 0 10px var(--cyan);
+    margin-right: 15px;
+}
+
+.user-avatar {
+    background-color: var(--purple);
+    box-shadow: 0 0 10px var(--purple);
+    margin-left: 15px;
+}
+
+.message-content {
+    background: rgba(10, 10, 10, 0.8);
+    padding: 12px 18px;
+    border: 1px solid;
+    position: relative;
+    line-height: 1.4;
+}
+
+/* We create a pseudo-hexagonal border effect using clip-path on the content box */
+.message.system .message-content, .message.assistant .message-content {
+    border-color: var(--cyan);
+    box-shadow: 0 0 10px var(--cyan-glow);
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+.message.user .message-content {
+    border-color: var(--purple);
+    box-shadow: 0 0 10px var(--purple-glow);
+    color: var(--purple);
+    clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Input Area */
+.input-area {
+    display: flex;
+    padding: 20px;
+    gap: 15px;
+    border-top: 1px solid var(--purple);
+    background: rgba(5, 5, 5, 0.9);
+    align-items: center;
+}
+
+.input-wrapper {
+    flex-grow: 1;
+    position: relative;
+    padding: 2px;
+    background: linear-gradient(45deg, var(--cyan), var(--purple));
+    clip-path: polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px);
+}
+
+.input-wrapper input {
+    width: 100%;
+    background-color: var(--hex-bg);
+    border: none;
+    padding: 15px 20px;
+    color: var(--cyan);
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 16px;
+    outline: none;
+    clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+.input-wrapper input::placeholder {
+    color: rgba(0, 243, 255, 0.4);
+}
+
+.hexagon-btn {
+    width: 60px;
+    height: 70px;
+    background-color: var(--bg-color);
+    border: none;
+    color: white;
+    cursor: pointer;
+    position: relative;
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    transition: all 0.2s;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.hexagon-btn span {
+    font-size: 12px;
+    font-weight: bold;
+    z-index: 2;
+}
+
+.send-btn {
+    border: 2px solid var(--cyan);
+    color: var(--cyan);
+    box-shadow: 0 0 15px var(--cyan-glow);
+}
+.send-btn::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    background-color: var(--hex-bg);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    z-index: 1;
+}
+
+.send-btn:hover {
+    background-color: var(--cyan);
+    color: var(--bg-color);
+    box-shadow: 0 0 20px var(--cyan);
+}
+.send-btn:hover::before { background-color: var(--cyan); }
+
+.mic-btn {
+    border: 2px solid var(--purple);
+    color: var(--purple);
+    box-shadow: 0 0 15px var(--purple-glow);
+}
+.mic-btn::before {
+    content: '';
+    position: absolute;
+    inset: 2px;
+    background-color: var(--hex-bg);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    z-index: 1;
+}
+
+.mic-btn:hover {
+    background-color: var(--purple);
+    color: var(--bg-color);
+    box-shadow: 0 0 20px var(--purple);
+}
+.mic-btn:hover::before { background-color: var(--purple); }
+
+/* Loading Animation for AI Response */
+.loading-dots {
+    display: inline-block;
+}
+.loading-dots span {
+    animation: loading 1.4s infinite both;
+    width: 4px;
+    height: 4px;
+    background-color: var(--cyan);
+    border-radius: 50%;
+    display: inline-block;
+    margin: 0 2px;
+}
+.loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+.loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes loading {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+}

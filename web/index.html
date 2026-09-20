@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NOVA - Personal AI</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="hexagon-icon"></div>
+            <h1>NOVA</h1>
+            <div class="status-indicator">
+                <span class="dot"></span> Online
+            </div>
+        </header>
+
+        <!-- Chat Area -->
+        <main class="chat-container" id="chat-container">
+            <div class="message system">
+                <div class="hexagon-avatar system-avatar"></div>
+                <div class="message-content">System initialized. Bionic Engine connected. Awaiting input.</div>
+            </div>
+        </main>
+
+        <!-- Input Area -->
+        <footer class="input-area">
+            <div class="input-wrapper hexagon-border">
+                <input type="text" id="user-input" placeholder="Initiate sequence..." autocomplete="off">
+            </div>
+
+            <button id="send-btn" class="hexagon-btn send-btn">
+                <span>SEND</span>
+            </button>
+            <button id="mic-btn" class="hexagon-btn mic-btn">
+                <span>MIC</span>
+            </button>
+        </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script type="text/javascript" src="/eel.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
