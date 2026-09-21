@@ -7,9 +7,26 @@ import os
 # Bionic / LM Studio runs an OpenAI-compatible server typically on port 1234
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 
+# Default prompt in case the file gets deleted
+DEFAULT_SYSTEM_PROMPT = """You are NOVA, a highly advanced, personal AI assistant.
+You are concise, helpful, and speak with a futuristic, Jarvis-like tone.
+You must always reply in plain text. Do not use JSON, do not hallucinate tool calls, and do not format your output as a function call."""
+
+# Load system prompt from file so it's easily editable by the user
+def load_system_prompt():
+    prompt_file = "system_prompt.txt"
+    if os.path.exists(prompt_file):
+        with open(prompt_file, "r", encoding="utf-8") as f:
+            return f.read().strip()
+    else:
+        # Create the file with the default prompt if it doesn't exist
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write(DEFAULT_SYSTEM_PROMPT)
+        return DEFAULT_SYSTEM_PROMPT
+
 # Store conversation history to maintain context
 conversation_history = [
-    {"role": "system", "content": "You are NOVA, a highly advanced, personal AI assistant. You are concise, helpful, and speak with a futuristic, Jarvis-like tone. You must always reply in plain text. Do not use JSON, do not hallucinate tool calls, and do not format your output as a function call."}
+    {"role": "system", "content": load_system_prompt()}
 ]
 
 @eel.expose
