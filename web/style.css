@@ -23,6 +23,14 @@ body {
     justify-content: center;
     align-items: center;
     overflow: hidden;
+    /* Custom Default Cursor - Layered Cyberpunk Chevrons */
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><path d="M 6 4 L 18 4 L 30 16 L 18 28 L 6 28 L 18 16 Z" fill="none" stroke="%23bc13fe" stroke-width="2"/><path d="M 2 8 L 12 8 L 22 18 L 12 28 L 2 28 L 12 18 Z" fill="%2300f3ff" stroke="none"/><path d="M 12 14 L 20 14 L 26 20 L 20 26 L 12 26 L 18 20 Z" fill="none" stroke="%2300f3ff" stroke-width="1.5"/></svg>') 2 8, auto;
+}
+
+/* Custom Hover Cursor - Chevrons with intense Cyan/Purple Glow */
+.nav-btn:hover, .send-btn:hover, .mic-btn:hover, .cyber-btn:hover,
+input[type="text"]:hover, select:hover, .cyber-input:hover {
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48"><defs><filter id="glow"><feGaussianBlur stdDeviation="3" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(%23glow)"><path d="M 12 10 L 24 10 L 36 22 L 24 34 L 12 34 L 24 22 Z" fill="none" stroke="%23bc13fe" stroke-width="2"/><path d="M 8 14 L 18 14 L 28 24 L 18 34 L 8 34 L 18 24 Z" fill="%2300f3ff" stroke="none"/><path d="M 18 20 L 26 20 L 32 26 L 26 32 L 18 32 L 24 26 Z" fill="none" stroke="%2300f3ff" stroke-width="1.5"/></g></svg>') 8 14, pointer !important;
 }
 
 .container {
