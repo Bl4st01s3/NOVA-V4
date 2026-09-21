@@ -23,10 +23,19 @@ def send_message_to_nova(user_text):
     conversation_history.append({"role": "user", "content": user_text})
 
     try:
+        # Fetch available models to auto-select the loaded one
+        models = client.models.list()
+
+        if not models.data:
+            return "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
+
+        # Select the ID of the first available model
+        model_id = models.data[0].id
+        print(f"Using model: {model_id}")
+
         # Call the local LM Studio server
-        # model="local-model" is a placeholder; LM Studio generally uses whatever model is loaded
         response = client.chat.completions.create(
-            model="local-model",
+            model=model_id,
             messages=conversation_history,
             temperature=0.7,
         )
