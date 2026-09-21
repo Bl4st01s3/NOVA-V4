@@ -9,7 +9,7 @@ client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 
 # Store conversation history to maintain context
 conversation_history = [
-    {"role": "system", "content": "You are NOVA, a highly advanced, personal AI assistant. You are concise, helpful, and speak with a futuristic, Jarvis-like tone."}
+    {"role": "system", "content": "You are NOVA, a highly advanced, personal AI assistant. You are concise, helpful, and speak with a futuristic, Jarvis-like tone. You must always reply in plain text. Do not use JSON, do not hallucinate tool calls, and do not format your output as a function call."}
 ]
 
 @eel.expose
