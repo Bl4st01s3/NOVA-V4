@@ -50,20 +50,62 @@ def send_message_to_nova(user_text):
         model_id = models.data[0].id
         print(f"Using model: {model_id}")
 
+        # Define the tools available to NOVA
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "speak",
+                    "description": "Formulate a response to the user and speak it out loud.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "text": {
+                                "type": "string",
+                                "description": "The response text to speak to the user."
+                            }
+                        },
+                        "required": ["text"]
+                    }
+                }
+            }
+        ]
+
         # Call the local LM Studio server
         response = client.chat.completions.create(
             model=model_id,
             messages=conversation_history,
             temperature=0.7,
+            tools=tools,
+            tool_choice="auto" # Let the model decide to use tools
         )
 
-        # Extract the AI's response
-        ai_text = response.choices[0].message.content
+        message = response.choices[0].message
+
+        ai_text = ""
+
+        # Check if the AI decided to call a tool
+        if message.tool_calls:
+            for tool_call in message.tool_calls:
+                if tool_call.function.name == "speak":
+                    import json
+                    try:
+                        args = json.loads(tool_call.function.arguments)
+                        ai_text = args.get("text", "")
+                    except json.JSONDecodeError:
+                        ai_text = "Error: Failed to parse speech output."
+
+            # For the history to be continuous in OpenAI format, we technically need to append the tool call
+            # and then append a 'tool' role response. Since we are just extracting text for the UI right now,
+            # we will store the extracted text directly as the assistant response so it remembers the conversation natively.
+            conversation_history.append({"role": "assistant", "content": ai_text})
+
+        # Handle case where AI responds with standard text instead of a tool
+        elif message.content:
+            ai_text = message.content
+            conversation_history.append({"role": "assistant", "content": ai_text})
+
         print(f"NOVA: {ai_text}")
-
-        # Append AI response to history
-        conversation_history.append({"role": "assistant", "content": ai_text})
-
         return ai_text
 
     except Exception as e:
