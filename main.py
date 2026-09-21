@@ -122,8 +122,9 @@ def start_app():
     print("NOVA UI Initialized. Launching window...")
 
     # Start the app. You can tweak geometry here.
+    # port=0 forces the OS to pick a random available port, preventing 'Address already in use' errors.
     try:
-        eel.start('index.html', size=(900, 700), position=(100, 100))
+        eel.start('index.html', size=(900, 700), position=(100, 100), port=0)
     except (SystemExit, KeyboardInterrupt):
         print("NOVA shut down.")
 
