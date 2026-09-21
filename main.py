@@ -87,6 +87,7 @@ def send_message_to_nova(user_text):
         # Check if the AI decided to call a tool
         if message.tool_calls:
             for tool_call in message.tool_calls:
+                eel.addActivityLog('tool', f"LLM decided to call tool: <b>{tool_call.function.name}</b>")
                 if tool_call.function.name == "speak":
                     import json
                     try:
@@ -102,6 +103,7 @@ def send_message_to_nova(user_text):
 
         # Handle case where AI responds with standard text instead of a tool
         elif message.content:
+            eel.addActivityLog('system', "LLM responded with standard text instead of using a tool.")
             ai_text = message.content
             conversation_history.append({"role": "assistant", "content": ai_text})
 
@@ -110,6 +112,7 @@ def send_message_to_nova(user_text):
 
     except Exception as e:
         print(f"Error communicating with LM Studio: {e}")
+        eel.addActivityLog('system', f"API Error: {str(e)}")
         return f"System Error: Unable to connect to the Bionic Engine. Please ensure LM Studio server is running on localhost:1234. Details: {str(e)}"
 
 def start_app():

@@ -32,19 +32,26 @@ body {
     border: 1px solid var(--purple);
     box-shadow: 0 0 20px var(--purple-glow), inset 0 0 20px var(--cyan-glow);
     display: flex;
-    flex-direction: column;
+    flex-direction: row; /* Changed to row for sidebar */
     position: relative;
-    /* Optional hexagonal clip path for the whole window if desired, but might be too extreme */
-    /* clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); */
 }
 
-/* Header */
-.header {
+/* Sidebar Navigation */
+.sidebar {
+    width: 250px;
+    border-right: 1px solid var(--cyan);
+    box-shadow: 2px 0 10px var(--cyan-glow);
+    display: flex;
+    flex-direction: column;
+    background: rgba(10, 10, 10, 0.8);
+    z-index: 10;
+}
+
+.sidebar-header {
     display: flex;
     align-items: center;
     padding: 20px;
-    border-bottom: 1px solid var(--cyan);
-    box-shadow: 0 2px 10px var(--cyan-glow);
+    border-bottom: 1px solid rgba(0, 243, 255, 0.2);
 }
 
 .hexagon-icon {
@@ -68,24 +75,63 @@ body {
     box-shadow: 0 0 10px var(--cyan);
 }
 
-.header h1 {
-    flex-grow: 1;
-    font-size: 24px;
+.sidebar-header h2 {
     color: var(--cyan);
     text-shadow: 0 0 5px var(--cyan);
     letter-spacing: 4px;
+    font-size: 20px;
+}
+
+.sidebar-nav {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 0;
+    gap: 10px;
+}
+
+.nav-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    padding: 15px 20px;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    letter-spacing: 2px;
+    position: relative;
+    transition: all 0.3s;
+    border-left: 3px solid transparent;
+}
+
+.nav-btn:hover {
+    background: rgba(188, 19, 254, 0.1);
+    color: var(--purple);
+}
+
+.nav-btn.active {
+    border-left: 3px solid var(--cyan);
+    background: rgba(0, 243, 255, 0.1);
+    color: var(--cyan);
+    text-shadow: 0 0 5px var(--cyan);
+}
+
+.sidebar-footer {
+    padding: 20px;
+    border-top: 1px solid rgba(0, 243, 255, 0.2);
 }
 
 .status-indicator {
     display: flex;
     align-items: center;
     color: var(--cyan);
-    font-size: 14px;
+    font-size: 12px;
 }
 
 .dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     background-color: var(--cyan);
     border-radius: 50%;
     margin-right: 8px;
@@ -98,7 +144,37 @@ body {
     50% { opacity: 0.3; }
 }
 
-/* Chat Area */
+/* Main Content Area */
+.main-content {
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.tab-pane {
+    display: none;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+}
+
+.tab-pane.active {
+    display: flex;
+}
+
+.pane-header {
+    padding: 20px;
+    border-bottom: 1px solid rgba(188, 19, 254, 0.3);
+}
+
+.pane-header h3 {
+    color: var(--purple);
+    letter-spacing: 3px;
+    font-size: 16px;
+    text-shadow: 0 0 5px var(--purple);
+}
+
+/* Chat Tab Specifics */
 .chat-container {
     flex-grow: 1;
     padding: 20px;
@@ -108,17 +184,9 @@ body {
     gap: 15px;
 }
 
-/* Scrollbar styling */
-.chat-container::-webkit-scrollbar {
-    width: 8px;
-}
-.chat-container::-webkit-scrollbar-track {
-    background: var(--bg-color);
-}
-.chat-container::-webkit-scrollbar-thumb {
-    background: var(--purple);
-    border-radius: 4px;
-}
+.chat-container::-webkit-scrollbar { width: 8px; }
+.chat-container::-webkit-scrollbar-track { background: transparent; }
+.chat-container::-webkit-scrollbar-thumb { background: var(--purple); border-radius: 4px; }
 
 .message {
     display: flex;
@@ -163,7 +231,6 @@ body {
     line-height: 1.4;
 }
 
-/* We create a pseudo-hexagonal border effect using clip-path on the content box */
 .message.system .message-content, .message.assistant .message-content {
     border-color: var(--cyan);
     box-shadow: 0 0 10px var(--cyan-glow);
@@ -231,71 +298,123 @@ body {
     align-items: center;
 }
 
-.hexagon-btn span {
-    font-size: 12px;
-    font-weight: bold;
-    z-index: 2;
-}
+.hexagon-btn span { font-size: 12px; font-weight: bold; z-index: 2; }
 
-.send-btn {
-    border: 2px solid var(--cyan);
-    color: var(--cyan);
-    box-shadow: 0 0 15px var(--cyan-glow);
-}
+.send-btn { border: 2px solid var(--cyan); color: var(--cyan); box-shadow: 0 0 15px var(--cyan-glow); }
 .send-btn::before {
-    content: '';
-    position: absolute;
-    inset: 2px;
-    background-color: var(--hex-bg);
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    z-index: 1;
+    content: ''; position: absolute; inset: 2px; background-color: var(--hex-bg);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); z-index: 1;
 }
-
-.send-btn:hover {
-    background-color: var(--cyan);
-    color: var(--bg-color);
-    box-shadow: 0 0 20px var(--cyan);
-}
+.send-btn:hover { background-color: var(--cyan); color: var(--bg-color); box-shadow: 0 0 20px var(--cyan); }
 .send-btn:hover::before { background-color: var(--cyan); }
 
-.mic-btn {
-    border: 2px solid var(--purple);
-    color: var(--purple);
-    box-shadow: 0 0 15px var(--purple-glow);
-}
+.mic-btn { border: 2px solid var(--purple); color: var(--purple); box-shadow: 0 0 15px var(--purple-glow); }
 .mic-btn::before {
-    content: '';
-    position: absolute;
-    inset: 2px;
-    background-color: var(--hex-bg);
-    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    z-index: 1;
+    content: ''; position: absolute; inset: 2px; background-color: var(--hex-bg);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); z-index: 1;
 }
-
-.mic-btn:hover {
-    background-color: var(--purple);
-    color: var(--bg-color);
-    box-shadow: 0 0 20px var(--purple);
-}
+.mic-btn:hover { background-color: var(--purple); color: var(--bg-color); box-shadow: 0 0 20px var(--purple); }
 .mic-btn:hover::before { background-color: var(--purple); }
 
-/* Loading Animation for AI Response */
-.loading-dots {
-    display: inline-block;
-}
+.loading-dots { display: inline-block; }
 .loading-dots span {
     animation: loading 1.4s infinite both;
-    width: 4px;
-    height: 4px;
-    background-color: var(--cyan);
-    border-radius: 50%;
-    display: inline-block;
-    margin: 0 2px;
+    width: 4px; height: 4px; background-color: var(--cyan);
+    border-radius: 50%; display: inline-block; margin: 0 2px;
 }
 .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
 .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+@keyframes loading { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
 
-@keyframes loading {
-    0%, 80%, 100% { transform: scale(0); }
-    40% { transform: scale(1); }
+/* Shared Pane Content */
+.settings-content, .log-container {
+    padding: 20px;
+    overflow-y: auto;
+    flex-grow: 1;
+}
+
+.settings-content::-webkit-scrollbar, .log-container::-webkit-scrollbar { width: 8px; }
+.settings-content::-webkit-scrollbar-track, .log-container::-webkit-scrollbar-track { background: transparent; }
+.settings-content::-webkit-scrollbar-thumb, .log-container::-webkit-scrollbar-thumb { background: var(--cyan); border-radius: 4px; }
+
+/* Log Styles */
+.log-entry {
+    font-size: 14px;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+}
+.log-time {
+    color: var(--cyan);
+    margin-right: 10px;
+}
+.system-log { color: #888; }
+.tool-log { color: var(--purple); }
+
+/* Settings Styles */
+.settings-card {
+    background: rgba(20, 20, 20, 0.8);
+    border: 1px solid var(--purple);
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: inset 0 0 10px rgba(188, 19, 254, 0.1);
+}
+
+.settings-card h4 {
+    color: var(--cyan);
+    margin-bottom: 10px;
+}
+
+.card-desc {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 15px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-main);
+    font-size: 12px;
+}
+
+.cyber-input {
+    width: 100%;
+    background: #000;
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    padding: 10px;
+    font-family: inherit;
+    outline: none;
+}
+.cyber-input:focus {
+    box-shadow: 0 0 10px var(--cyan-glow);
+}
+
+.cyber-btn {
+    background: transparent;
+    border: 1px solid var(--purple);
+    color: var(--purple);
+    padding: 10px 20px;
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 2px;
+    transition: all 0.3s;
+    width: 100%;
+    margin-top: 10px;
+}
+
+.cyber-btn:hover {
+    background: var(--purple);
+    color: #000;
+    box-shadow: 0 0 15px var(--purple);
+}
+
+.placeholder-text {
+    color: #555;
+    font-style: italic;
 }
