@@ -93,21 +93,59 @@
                 </div>
                 <div class="settings-content">
 
-                    <div class="settings-card">
+                    <div class="settings-card" id="vp-card-dashboard">
                         <h4>Voice Profiles (Speaker Verification)</h4>
-                        <p class="card-desc">Enroll user voices so NOVA can identify who is speaking and respond with the correct title.</p>
+                        <p class="card-desc">Enroll user voices so NOVA can identify who is speaking and ignore background noise (e.g. TVs).</p>
 
-                        <div class="form-group">
-                            <label>User Name</label>
-                            <input type="text" id="vp-name" class="cyber-input" placeholder="e.g. Jules">
-                        </div>
-                        <div class="form-group">
-                            <label>Title / Pronoun</label>
-                            <input type="text" id="vp-title" class="cyber-input" placeholder="e.g. Sir / Ma'am">
+                        <!-- List of existing profiles -->
+                        <div id="vp-list-container" style="margin-bottom: 20px;">
+                            <!-- Populated by JS -->
                         </div>
 
-                        <button class="cyber-btn" id="enroll-voice-btn">
-                            [ START VOICE ENROLLMENT ]
+                        <div style="border-top: 1px solid rgba(188, 19, 254, 0.3); padding-top: 15px; margin-top: 15px;">
+                            <h5 style="color: var(--cyan); margin-bottom: 10px;">Add New Profile</h5>
+                            <div class="form-group">
+                                <label>User Name</label>
+                                <input type="text" id="vp-name" class="cyber-input" placeholder="e.g. Jules">
+                            </div>
+                            <div class="form-group">
+                                <label>Title / Pronoun</label>
+                                <input type="text" id="vp-title" class="cyber-input" placeholder="e.g. Sir / Ma'am">
+                            </div>
+
+                            <button class="cyber-btn" id="enroll-voice-btn">
+                                [ START ENROLLMENT ]
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Voice Enrollment Wizard (Hidden by default) -->
+                    <div class="settings-card" id="vp-card-wizard" style="display: none; text-align: center;">
+                        <h4 style="color: var(--cyan); margin-bottom: 5px;">Acoustic Enrollment Phase</h4>
+                        <p class="card-desc" id="vp-wizard-subtitle">Recording voice profile for <span id="vp-wizard-name" style="color: var(--purple);"></span></p>
+
+                        <div style="margin: 20px 0; padding: 20px; background: rgba(0,0,0,0.5); border: 1px dashed var(--cyan);">
+                            <p style="font-size: 12px; color: #888; margin-bottom: 10px;">Phrase <span id="vp-phrase-num">1</span> of 3</p>
+                            <p id="vp-phrase-text" style="font-size: 18px; color: var(--text-main); font-style: italic; letter-spacing: 1px;">
+                                "The quick brown fox jumps over the lazy dog."
+                            </p>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                            <button class="cyber-btn" id="vp-btn-record" style="width: auto; padding: 10px 30px;">
+                                <span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: none;"></span> [ RECORD ]
+                            </button>
+
+                            <button class="cyber-btn" id="vp-btn-accept" style="display: none; width: auto; border-color: var(--cyan); color: var(--cyan);">
+                                [ ACCEPT ]
+                            </button>
+                            <button class="cyber-btn" id="vp-btn-rerecord" style="display: none; width: auto;">
+                                [ RE-RECORD ]
+                            </button>
+                        </div>
+
+                        <button class="cyber-btn" id="vp-btn-cancel" style="margin-top: 20px; border-color: #555; color: #888;">
+                            [ CANCEL ENROLLMENT ]
                         </button>
                     </div>
 
