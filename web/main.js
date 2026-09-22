@@ -50,16 +50,168 @@ document.addEventListener("DOMContentLoaded", () => {
         appendMessage('system', 'Voice input module not yet initialized (Phase 2).');
     });
 
-    // Settings / Enrollment Logic (Placeholder)
+    // --- Voice Profile Management Logic ---
+    const vpDashboard = document.getElementById('vp-card-dashboard');
+    const vpWizard = document.getElementById('vp-card-wizard');
+    const vpListContainer = document.getElementById('vp-list-container');
     const enrollBtn = document.getElementById('enroll-voice-btn');
+
+    // Load profiles from localStorage (Phase 1 mock database)
+    let voiceProfiles = JSON.parse(localStorage.getItem('nova_voice_profiles') || '[]');
+
+    function renderProfiles() {
+        vpListContainer.innerHTML = '';
+        if (voiceProfiles.length === 0) {
+            vpListContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No voice profiles enrolled.</p>';
+            return;
+        }
+
+        voiceProfiles.forEach((profile, index) => {
+            const row = document.createElement('div');
+            row.style.cssText = "display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(0,0,0,0.5); border: 1px solid var(--purple); margin-bottom: 10px;";
+
+            const info = document.createElement('div');
+            info.innerHTML = `<strong style="color: var(--cyan);">${profile.name}</strong> <span style="color:#888; font-size: 12px;">(${profile.title})</span>`;
+
+            const btns = document.createElement('div');
+            btns.style.display = "flex";
+            btns.style.gap = "10px";
+
+            const retrainBtn = document.createElement('button');
+            retrainBtn.innerText = "[ RETRAIN ]";
+            retrainBtn.className = "cyber-btn";
+            retrainBtn.style.cssText = "width: auto; padding: 5px 10px; font-size: 10px; margin: 0; border-color: var(--cyan); color: var(--cyan);";
+            retrainBtn.onclick = () => startEnrollmentWizard(profile.name, profile.title, index);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.innerText = "[ REMOVE ]";
+            removeBtn.className = "cyber-btn";
+            removeBtn.style.cssText = "width: auto; padding: 5px 10px; font-size: 10px; margin: 0; border-color: red; color: red;";
+            removeBtn.onclick = () => {
+                if(confirm(`Remove profile for ${profile.name}?`)) {
+                    voiceProfiles.splice(index, 1);
+                    localStorage.setItem('nova_voice_profiles', JSON.stringify(voiceProfiles));
+                    renderProfiles();
+                }
+            };
+
+            btns.appendChild(retrainBtn);
+            btns.appendChild(removeBtn);
+            row.appendChild(info);
+            row.appendChild(btns);
+            vpListContainer.appendChild(row);
+        });
+    }
+
+    // Initial render
+    renderProfiles();
+
+    // Start New Enrollment
     enrollBtn.addEventListener('click', () => {
-        const name = document.getElementById('vp-name').value;
-        const title = document.getElementById('vp-title').value;
+        const nameInput = document.getElementById('vp-name');
+        const titleInput = document.getElementById('vp-title');
+        const name = nameInput.value.trim();
+        const title = titleInput.value.trim();
+
         if(!name || !title) {
             alert("Please enter a name and title before enrolling.");
             return;
         }
-        alert(`Voice enrollment initialized for ${name} (${title}).\nWaiting for Phase 2 audio engine integration...`);
+
+        nameInput.value = '';
+        titleInput.value = '';
+        startEnrollmentWizard(name, title, -1); // -1 means new profile
+    });
+
+    // --- Enrollment Wizard Logic ---
+    const pangrams = [
+        "The quick brown fox jumps over the lazy dog.",
+        "Pack my box with five dozen liquor jugs.",
+        "Sphinx of black quartz, judge my vow."
+    ];
+
+    let currentWizardState = {
+        name: '',
+        title: '',
+        index: -1,
+        phraseIndex: 0
+    };
+
+    const wTitle = document.getElementById('vp-wizard-name');
+    const wNum = document.getElementById('vp-phrase-num');
+    const wText = document.getElementById('vp-phrase-text');
+
+    const btnRecord = document.getElementById('vp-btn-record');
+    const btnAccept = document.getElementById('vp-btn-accept');
+    const btnRerecord = document.getElementById('vp-btn-rerecord');
+    const btnCancel = document.getElementById('vp-btn-cancel');
+    const dot = btnRecord.querySelector('.dot');
+
+    function startEnrollmentWizard(name, title, profileIndex) {
+        currentWizardState = { name, title, index: profileIndex, phraseIndex: 0 };
+
+        wTitle.innerText = name;
+        updateWizardUI();
+
+        vpDashboard.style.display = 'none';
+        vpWizard.style.display = 'block';
+    }
+
+    function updateWizardUI() {
+        wNum.innerText = currentWizardState.phraseIndex + 1;
+        wText.innerText = `"${pangrams[currentWizardState.phraseIndex]}"`;
+
+        btnRecord.style.display = 'block';
+        btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: none;"></span> [ RECORD ]`;
+        btnRecord.disabled = false;
+
+        btnAccept.style.display = 'none';
+        btnRerecord.style.display = 'none';
+    }
+
+    btnRecord.addEventListener('click', () => {
+        // Simulate recording for 2.5 seconds
+        btnRecord.disabled = true;
+        btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: blink 1s infinite;"></span> [ RECORDING... ]`;
+
+        setTimeout(() => {
+            btnRecord.style.display = 'none';
+            btnAccept.style.display = 'block';
+            btnRerecord.style.display = 'block';
+        }, 2500);
+    });
+
+    btnRerecord.addEventListener('click', updateWizardUI);
+
+    btnAccept.addEventListener('click', () => {
+        currentWizardState.phraseIndex++;
+
+        if (currentWizardState.phraseIndex >= pangrams.length) {
+            // Finished!
+            alert(`Voice profile for ${currentWizardState.name} successfully built!`);
+
+            if (currentWizardState.index === -1) {
+                // Add new
+                voiceProfiles.push({ name: currentWizardState.name, title: currentWizardState.title });
+            } else {
+                // Update existing
+                voiceProfiles[currentWizardState.index] = { name: currentWizardState.name, title: currentWizardState.title };
+            }
+
+            localStorage.setItem('nova_voice_profiles', JSON.stringify(voiceProfiles));
+            renderProfiles();
+
+            vpWizard.style.display = 'none';
+            vpDashboard.style.display = 'block';
+        } else {
+            // Next phrase
+            updateWizardUI();
+        }
+    });
+
+    btnCancel.addEventListener('click', () => {
+        vpWizard.style.display = 'none';
+        vpDashboard.style.display = 'block';
     });
 
     // OBS URL Logic
