@@ -36,6 +36,12 @@ def send_message_to_nova(user_text):
     """
     print(f"User: {user_text}")
 
+    # Notify OBS Overlay that we are processing/talking
+    try:
+        eel.setNovaState('talking')()
+    except Exception as e:
+        print(f"Info: Could not update OBS state (is OBS overlay open?): {e}")
+
     # Append user message to history
     conversation_history.append({"role": "user", "content": user_text})
 
@@ -44,6 +50,8 @@ def send_message_to_nova(user_text):
         models = client.models.list()
 
         if not models.data:
+            try: eel.setNovaState('error')()
+            except: pass
             return "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
 
         # Select the ID of the first available model
@@ -108,11 +116,21 @@ def send_message_to_nova(user_text):
             conversation_history.append({"role": "assistant", "content": ai_text})
 
         print(f"NOVA: {ai_text}")
+
+        # Revert OBS to idle when done talking
+        try: eel.setNovaState('idle')()
+        except: pass
+
         return ai_text
 
     except Exception as e:
         print(f"Error communicating with LM Studio: {e}")
         eel.addActivityLog('system', f"API Error: {str(e)}")
+
+        # Set OBS to error state
+        try: eel.setNovaState('error')()
+        except: pass
+
         return f"System Error: Unable to connect to the Bionic Engine. Please ensure LM Studio server is running on localhost:1234. Details: {str(e)}"
 
 def start_app():
