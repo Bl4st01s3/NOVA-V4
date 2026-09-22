@@ -136,6 +136,8 @@ input[type="text"]:hover, select:hover, .cyber-input:hover {
     flex-grow: 1;
     position: relative;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .tab-pane {
@@ -318,6 +320,7 @@ input[type="text"]:hover, select:hover, .cyber-input:hover {
     padding: 20px;
     overflow-y: auto;
     flex-grow: 1;
+    min-height: 0; /* Forces flex child to stay within parent bounds */
 }
 
 .settings-content::-webkit-scrollbar, .log-container::-webkit-scrollbar { width: 8px; }
