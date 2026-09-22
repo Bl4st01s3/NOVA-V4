@@ -32,6 +32,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // Particles
     const orbParticles = [];
     const orbitingParticles = [];
+    const waveParticles = [];
 
     function initParticles() {
         // Internal orb particles (the node network effect)
@@ -53,6 +54,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 speed: 0.02 + Math.random() * 0.01,
                 size: 3 + Math.random() * 2,
                 trail: []
+            });
+        }
+
+        // Wave satellite particles
+        for(let i=0; i<30; i++) {
+            waveParticles.push({
+                x: Math.random() * window.innerWidth, // Random start X
+                yOffset: (Math.random() - 0.5) * 60, // Random vertical offset from the wave center
+                size: Math.random() * 1.5 + 0.5,
+                speedX: 0.5 + Math.random() * 1.5 // Particles flow left to right
             });
         }
     }
@@ -102,7 +113,23 @@ document.addEventListener("DOMContentLoaded", () => {
         breathAngle += breathSpeed;
     }
 
+    function getWaveY(x, isSecondary = false) {
+        let y = 0;
+        if (!isSecondary) {
+            y = Math.sin(x * waveFrequency + waveOffset) * waveAmplitude;
+            y += Math.sin(x * waveFrequency * 2.5 + waveOffset * 1.5) * (waveAmplitude * 0.5);
+        } else {
+            y = Math.cos(x * waveFrequency * 0.8 + waveOffset * 1.2) * (waveAmplitude * 0.8);
+        }
+
+        // Taper the wave at the edges
+        let distanceToCenter = Math.abs(x - centerX);
+        let taper = Math.max(0, 1 - distanceToCenter / (width / 2));
+        return y * taper;
+    }
+
     function drawWave() {
+        // Main wave
         ctx.beginPath();
         ctx.lineWidth = 3;
         ctx.strokeStyle = `rgba(${waveColor.r}, ${waveColor.g}, ${waveColor.b}, 0.6)`;
@@ -110,37 +137,70 @@ document.addEventListener("DOMContentLoaded", () => {
         ctx.shadowColor = `rgba(${waveColor.r}, ${waveColor.g}, ${waveColor.b}, 1)`;
 
         for (let x = 0; x < width; x += 5) {
-            // Complex sine wave for oscilloscope feel
-            let y = Math.sin(x * waveFrequency + waveOffset) * waveAmplitude;
-            y += Math.sin(x * waveFrequency * 2.5 + waveOffset * 1.5) * (waveAmplitude * 0.5);
-
-            // Taper the wave at the edges
-            let distanceToCenter = Math.abs(x - centerX);
-            let taper = Math.max(0, 1 - distanceToCenter / (width / 2));
-            y *= taper;
-
-            if (x === 0) {
-                ctx.moveTo(x, centerY + y);
-            } else {
-                ctx.lineTo(x, centerY + y);
-            }
+            let y = getWaveY(x, false);
+            if (x === 0) ctx.moveTo(x, centerY + y);
+            else ctx.lineTo(x, centerY + y);
         }
         ctx.stroke();
 
-        // Draw a faint secondary wave
+        // Faint secondary wave
         ctx.beginPath();
         ctx.lineWidth = 1;
         ctx.strokeStyle = `rgba(${waveColor.r}, ${waveColor.g}, ${waveColor.b}, 0.3)`;
         for (let x = 0; x < width; x += 5) {
-            let y = Math.cos(x * waveFrequency * 0.8 + waveOffset * 1.2) * (waveAmplitude * 0.8);
-            let distanceToCenter = Math.abs(x - centerX);
-            let taper = Math.max(0, 1 - distanceToCenter / (width / 2));
-            y *= taper;
+            let y = getWaveY(x, true);
             if (x === 0) ctx.moveTo(x, centerY + y);
             else ctx.lineTo(x, centerY + y);
         }
         ctx.stroke();
         ctx.shadowBlur = 0; // Reset
+    }
+
+    function drawWaveParticles() {
+        ctx.strokeStyle = `rgba(${waveColor.r}, ${waveColor.g}, ${waveColor.b}, 0.4)`;
+        ctx.fillStyle = `rgba(${waveColor.r}, ${waveColor.g}, ${waveColor.b}, 0.8)`;
+        ctx.lineWidth = 0.5;
+
+        // Update and draw nodes
+        for (let i = 0; i < waveParticles.length; i++) {
+            let p = waveParticles[i];
+
+            // Move horizontally
+            p.x += p.speedX;
+            // Wrap around screen
+            if (p.x > width) {
+                p.x = 0;
+                p.yOffset = (Math.random() - 0.5) * 60;
+            }
+
+            // Calculate actual Y position based on wave + offset
+            let waveY = getWaveY(p.x, false);
+            let py = centerY + waveY + p.yOffset;
+
+            // Draw particle
+            ctx.beginPath();
+            ctx.arc(p.x, py, p.size, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw connecting network lines to nearby particles
+            for (let j = i + 1; j < waveParticles.length; j++) {
+                let p2 = waveParticles[j];
+                let p2WaveY = getWaveY(p2.x, false);
+                let p2y = centerY + p2WaveY + p2.yOffset;
+
+                let dist = Math.sqrt(Math.pow(p.x - p2.x, 2) + Math.pow(py - p2y, 2));
+
+                if (dist < 100) {
+                    // Fade line based on distance
+                    let opacity = 0.4 * (1 - dist / 100);
+                    ctx.strokeStyle = `rgba(${waveColor.r}, ${waveColor.g}, ${waveColor.b}, ${opacity})`;
+                    ctx.beginPath();
+                    ctx.moveTo(p.x, py);
+                    ctx.lineTo(p2.x, p2y);
+                    ctx.stroke();
+                }
+            }
+        }
     }
 
     function drawOrb() {
@@ -257,6 +317,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         updateState();
         drawWave();
+        drawWaveParticles();
         drawOrbitingParticles();
         drawOrb();
 
