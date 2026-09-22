@@ -81,6 +81,42 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 2000);
     });
 
+    // Briefing Preferences Logic
+    const briefCheckboxes = ['brief-weather', 'brief-printer', 'brief-calendar'];
+
+    function loadBriefingPrefs() {
+        briefCheckboxes.forEach(id => {
+            const val = localStorage.getItem(id);
+            if (val !== null) {
+                document.getElementById(id).checked = (val === 'true');
+            }
+        });
+        syncBriefingPrefs();
+    }
+
+    function syncBriefingPrefs() {
+        const prefs = {
+            weather: document.getElementById('brief-weather').checked,
+            printer: document.getElementById('brief-printer').checked,
+            calendar: document.getElementById('brief-calendar').checked
+        };
+        // Send to backend
+        try {
+            eel.update_briefing_prefs(prefs)();
+        } catch(e) {}
+    }
+
+    briefCheckboxes.forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener('change', () => {
+            localStorage.setItem(id, el.checked);
+            syncBriefingPrefs();
+        });
+    });
+
+    // Load initial prefs after a small delay to ensure Eel is ready
+    setTimeout(loadBriefingPrefs, 500);
+
     // Helper functions for Chat
     function appendMessage(sender, text) {
         const messageDiv = document.createElement('div');
@@ -144,6 +180,32 @@ eel.expose(appendSystemMessage);
 function appendSystemMessage(text) {
     // Keeping for backwards compatibility
     console.log("System Message:", text);
+}
+
+eel.expose(pushAIMessage);
+function pushAIMessage(text) {
+    // Re-use the logic from inside DOMContentLoaded
+    const chatContainer = document.getElementById('chat-container');
+    if (!chatContainer) return;
+
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', 'assistant');
+
+    const avatar = document.createElement('div');
+    avatar.classList.add('hexagon-avatar', 'assistant-avatar');
+
+    const content = document.createElement('div');
+    content.classList.add('message-content');
+
+    const textNode = document.createTextNode(text);
+    content.appendChild(textNode);
+    content.innerHTML = content.innerHTML.replace(/\n/g, '<br>');
+
+    messageDiv.appendChild(avatar);
+    messageDiv.appendChild(content);
+
+    chatContainer.appendChild(messageDiv);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
 eel.expose(addActivityLog);
