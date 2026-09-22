@@ -62,6 +62,25 @@ document.addEventListener("DOMContentLoaded", () => {
         alert(`Voice enrollment initialized for ${name} (${title}).\nWaiting for Phase 2 audio engine integration...`);
     });
 
+    // OBS URL Logic
+    const obsUrlInput = document.getElementById('obs-url');
+    const obsCopyBtn = document.getElementById('copy-obs-btn');
+
+    // Set the input value to the current host + obs_overlay.html
+    const currentUrl = window.location.href.split('index.html')[0];
+    obsUrlInput.value = currentUrl + "obs_overlay.html";
+
+    obsCopyBtn.addEventListener('click', () => {
+        obsUrlInput.select();
+        document.execCommand('copy');
+
+        const originalText = obsCopyBtn.innerText;
+        obsCopyBtn.innerText = "[ COPIED! ]";
+        setTimeout(() => {
+            obsCopyBtn.innerText = originalText;
+        }, 2000);
+    });
+
     // Helper functions for Chat
     function appendMessage(sender, text) {
         const messageDiv = document.createElement('div');
