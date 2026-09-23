@@ -56,12 +56,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const vpListContainer = document.getElementById('vp-list-container');
     const enrollBtn = document.getElementById('enroll-voice-btn');
 
-    // Load profiles from localStorage (Phase 1 mock database)
-    let voiceProfiles = JSON.parse(localStorage.getItem('nova_voice_profiles') || '[]');
+    // Load profiles from persistent Python backend storage
+    let voiceProfiles = [];
+
+    async function loadVoiceProfiles() {
+        try {
+            voiceProfiles = await eel.get_voice_profiles()();
+            renderProfiles();
+        } catch(e) {
+            console.error("Failed to load voice profiles", e);
+        }
+    }
 
     function renderProfiles() {
         vpListContainer.innerHTML = '';
-        if (voiceProfiles.length === 0) {
+        if (!voiceProfiles || voiceProfiles.length === 0) {
             vpListContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No voice profiles enrolled.</p>';
             return;
         }
@@ -90,7 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
             removeBtn.onclick = () => {
                 if(confirm(`Remove profile for ${profile.name}?`)) {
                     voiceProfiles.splice(index, 1);
-                    localStorage.setItem('nova_voice_profiles', JSON.stringify(voiceProfiles));
+                    try { eel.update_voice_profiles(voiceProfiles)(); } catch(e){}
                     renderProfiles();
                 }
             };
@@ -103,8 +112,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
-    // Initial render
-    renderProfiles();
+    // Load profiles shortly after init
+    setTimeout(loadVoiceProfiles, 500);
 
     // Start New Enrollment
     enrollBtn.addEventListener('click', () => {
@@ -169,19 +178,30 @@ document.addEventListener("DOMContentLoaded", () => {
         btnRerecord.style.display = 'none';
     }
 
-    btnRecord.addEventListener('click', () => {
-        // Simulate recording for 2.5 seconds
-        btnRecord.disabled = true;
-        btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: blink 1s infinite;"></span> [ RECORDING... ]`;
+    let isCurrentlyRecording = false;
 
-        setTimeout(() => {
+    btnRecord.addEventListener('click', () => {
+        if (!isCurrentlyRecording) {
+            // Start real audio recording
+            isCurrentlyRecording = true;
+            try { eel.start_recording(currentWizardState.name, currentWizardState.phraseIndex)(); } catch(e){}
+
+            btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: blink 1s infinite;"></span> [ STOP RECORDING ]`;
+        } else {
+            // Stop recording
+            isCurrentlyRecording = false;
+            try { eel.stop_recording()(); } catch(e){}
+
             btnRecord.style.display = 'none';
             btnAccept.style.display = 'block';
             btnRerecord.style.display = 'block';
-        }, 2500);
+        }
     });
 
-    btnRerecord.addEventListener('click', updateWizardUI);
+    btnRerecord.addEventListener('click', () => {
+        try { eel.cancel_recording()(); } catch(e){}
+        updateWizardUI();
+    });
 
     btnAccept.addEventListener('click', () => {
         currentWizardState.phraseIndex++;
@@ -198,7 +218,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 voiceProfiles[currentWizardState.index] = { name: currentWizardState.name, title: currentWizardState.title };
             }
 
-            localStorage.setItem('nova_voice_profiles', JSON.stringify(voiceProfiles));
+            try { eel.update_voice_profiles(voiceProfiles)(); } catch(e){}
             renderProfiles();
 
             vpWizard.style.display = 'none';
@@ -214,13 +234,20 @@ document.addEventListener("DOMContentLoaded", () => {
         vpDashboard.style.display = 'block';
     });
 
-    // OBS URL Logic
+    // OBS URL Logic & Registration
     const obsUrlInput = document.getElementById('obs-url');
     const obsCopyBtn = document.getElementById('copy-obs-btn');
 
-    // Set the input value to the current host + obs_overlay.html
-    const currentUrl = window.location.href.split('index.html')[0];
-    obsUrlInput.value = currentUrl + "obs_overlay.html";
+    // Tell the backend webhook server what our dynamic port is
+    const currentPort = window.location.port;
+    fetch('http://127.0.0.1:54321/register_port', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port: currentPort })
+    }).catch(e => console.log("Failed to register port with backend:", e));
+
+    // Display the static URL in the UI instead of the random one
+    obsUrlInput.value = "http://127.0.0.1:54321/obs";
 
     obsCopyBtn.addEventListener('click', () => {
         obsUrlInput.select();

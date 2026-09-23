@@ -7,6 +7,9 @@ import json
 import time
 import logging
 import subprocess
+import sounddevice as sd
+import numpy as np
+import scipy.io.wavfile as wav
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
@@ -167,6 +170,9 @@ presence_state = {
     "last_event_time": 0
 }
 
+# Stores the dynamic Eel port registered by the frontend on load
+dynamic_ui_port = None
+
 briefing_prefs = {
     "weather": True,
     "printer": True,
@@ -194,6 +200,122 @@ def update_briefing_prefs(prefs):
     global briefing_prefs
     briefing_prefs.update(prefs)
     print_and_log(f"Updated Briefing Preferences: {briefing_prefs}")
+
+# --- Voice Profile Persistence ---
+VOICE_PROFILES_FILE = "voice_profiles.json"
+
+@eel.expose
+def get_voice_profiles():
+    """Loads voice profiles from disk so they survive updates and cache clears."""
+    if os.path.exists(VOICE_PROFILES_FILE):
+        try:
+            with open(VOICE_PROFILES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log_error(f"Failed to load voice profiles: {e}")
+    return []
+
+@eel.expose
+def update_voice_profiles(profiles):
+    """Saves voice profiles to disk."""
+    try:
+        with open(VOICE_PROFILES_FILE, "w", encoding="utf-8") as f:
+            json.dump(profiles, f, indent=4)
+        print_and_log("Voice profiles saved to disk.")
+    except Exception as e:
+        log_error(f"Failed to save voice profiles: {e}")
+
+# --- Microphone Recording (Phase 1.5) ---
+recording_state = {
+    "is_recording": False,
+    "stream": None,
+    "frames": [],
+    "sample_rate": 44100,
+    "current_profile": "",
+    "current_phrase": 0
+}
+
+def audio_callback(indata, frames, time_info, status):
+    """Called by sounddevice for each audio block."""
+    if status:
+        log_error(f"Audio Callback Status: {status}")
+    if recording_state["is_recording"]:
+        recording_state["frames"].append(indata.copy())
+
+@eel.expose
+def start_recording(profile_name, phrase_index):
+    """Starts capturing audio from the default microphone."""
+    if recording_state["is_recording"]:
+        return
+
+    print_and_log(f"Started recording phrase {phrase_index} for profile: {profile_name}")
+    recording_state["frames"] = []
+    recording_state["current_profile"] = profile_name
+    recording_state["current_phrase"] = phrase_index
+    recording_state["is_recording"] = True
+
+    try:
+        recording_state["stream"] = sd.InputStream(
+            samplerate=recording_state["sample_rate"],
+            channels=1,
+            callback=audio_callback
+        )
+        recording_state["stream"].start()
+    except Exception as e:
+        log_error(f"Failed to start audio stream: {e}")
+        recording_state["is_recording"] = False
+
+@eel.expose
+def stop_recording():
+    """Stops the audio stream and saves the .wav file."""
+    if not recording_state["is_recording"]:
+        return False
+
+    recording_state["is_recording"] = False
+
+    try:
+        if recording_state["stream"]:
+            recording_state["stream"].stop()
+            recording_state["stream"].close()
+            recording_state["stream"] = None
+
+        if not recording_state["frames"]:
+            log_error("No audio frames captured.")
+            return False
+
+        # Combine all audio chunks
+        audio_data = np.concatenate(recording_state["frames"], axis=0)
+
+        # Create user directory if it doesn't exist
+        safe_name = "".join([c for c in recording_state["current_profile"] if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        save_dir = os.path.join("voice_samples", safe_name)
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Save to .wav
+        filename = os.path.join(save_dir, f"phrase_{recording_state['current_phrase']}.wav")
+        wav.write(filename, recording_state["sample_rate"], audio_data)
+
+        print_and_log(f"Successfully saved voice sample: {filename}")
+        return True
+
+    except Exception as e:
+        log_error(f"Failed to stop and save recording: {e}")
+        return False
+
+@eel.expose
+def cancel_recording():
+    """Stops the stream but intentionally discards the data (used for re-records)."""
+    recording_state["is_recording"] = False
+    if recording_state["stream"]:
+        try:
+            recording_state["stream"].stop()
+            recording_state["stream"].close()
+        except:
+            pass
+    recording_state["stream"] = None
+    recording_state["frames"] = []
+    print_and_log("Recording cancelled/discarded.")
+
 
 def generate_presence_message(event_type):
     """
@@ -300,10 +422,43 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
-        self.wfile.write(json.dumps(message).encode('utf-8'))
+        if message:
+            self.wfile.write(json.dumps(message).encode('utf-8'))
+
+    def do_GET(self):
+        if self.path == '/obs':
+            global dynamic_ui_port
+            if dynamic_ui_port:
+                # 302 Redirect to the dynamic OBS overlay URL
+                redirect_url = f"http://127.0.0.1:{dynamic_ui_port}/obs_overlay.html"
+                self.send_response(302)
+                self.send_header('Location', redirect_url)
+                self.end_headers()
+            else:
+                self._send_response(503, {"error": "UI Port not registered yet. Open the main NOVA app first."})
+        else:
+            self._send_response(404, {"error": "Not found"})
 
     def do_POST(self):
-        if self.path == '/presence':
+        global dynamic_ui_port
+
+        if self.path == '/register_port':
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                post_data = self.rfile.read(content_length)
+                try:
+                    data = json.loads(post_data.decode('utf-8'))
+                    port = data.get('port')
+                    if port:
+                        dynamic_ui_port = port
+                        print_and_log(f"Dynamic UI port registered: {port}")
+                        self._send_response(200, {"status": "success"})
+                    else:
+                        self._send_response(400, {"error": "Missing port"})
+                except json.JSONDecodeError:
+                    self._send_response(400, {"error": "Invalid JSON"})
+
+        elif self.path == '/presence':
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 post_data = self.rfile.read(content_length)
