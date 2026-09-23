@@ -7,6 +7,9 @@ import json
 import time
 import logging
 import subprocess
+import sounddevice as sd
+import numpy as np
+import scipy.io.wavfile as wav
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
@@ -221,6 +224,98 @@ def update_voice_profiles(profiles):
         print_and_log("Voice profiles saved to disk.")
     except Exception as e:
         log_error(f"Failed to save voice profiles: {e}")
+
+# --- Microphone Recording (Phase 1.5) ---
+recording_state = {
+    "is_recording": False,
+    "stream": None,
+    "frames": [],
+    "sample_rate": 44100,
+    "current_profile": "",
+    "current_phrase": 0
+}
+
+def audio_callback(indata, frames, time_info, status):
+    """Called by sounddevice for each audio block."""
+    if status:
+        log_error(f"Audio Callback Status: {status}")
+    if recording_state["is_recording"]:
+        recording_state["frames"].append(indata.copy())
+
+@eel.expose
+def start_recording(profile_name, phrase_index):
+    """Starts capturing audio from the default microphone."""
+    if recording_state["is_recording"]:
+        return
+
+    print_and_log(f"Started recording phrase {phrase_index} for profile: {profile_name}")
+    recording_state["frames"] = []
+    recording_state["current_profile"] = profile_name
+    recording_state["current_phrase"] = phrase_index
+    recording_state["is_recording"] = True
+
+    try:
+        recording_state["stream"] = sd.InputStream(
+            samplerate=recording_state["sample_rate"],
+            channels=1,
+            callback=audio_callback
+        )
+        recording_state["stream"].start()
+    except Exception as e:
+        log_error(f"Failed to start audio stream: {e}")
+        recording_state["is_recording"] = False
+
+@eel.expose
+def stop_recording():
+    """Stops the audio stream and saves the .wav file."""
+    if not recording_state["is_recording"]:
+        return False
+
+    recording_state["is_recording"] = False
+
+    try:
+        if recording_state["stream"]:
+            recording_state["stream"].stop()
+            recording_state["stream"].close()
+            recording_state["stream"] = None
+
+        if not recording_state["frames"]:
+            log_error("No audio frames captured.")
+            return False
+
+        # Combine all audio chunks
+        audio_data = np.concatenate(recording_state["frames"], axis=0)
+
+        # Create user directory if it doesn't exist
+        safe_name = "".join([c for c in recording_state["current_profile"] if c.isalpha() or c.isdigit() or c==' ']).rstrip()
+        save_dir = os.path.join("voice_samples", safe_name)
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Save to .wav
+        filename = os.path.join(save_dir, f"phrase_{recording_state['current_phrase']}.wav")
+        wav.write(filename, recording_state["sample_rate"], audio_data)
+
+        print_and_log(f"Successfully saved voice sample: {filename}")
+        return True
+
+    except Exception as e:
+        log_error(f"Failed to stop and save recording: {e}")
+        return False
+
+@eel.expose
+def cancel_recording():
+    """Stops the stream but intentionally discards the data (used for re-records)."""
+    recording_state["is_recording"] = False
+    if recording_state["stream"]:
+        try:
+            recording_state["stream"].stop()
+            recording_state["stream"].close()
+        except:
+            pass
+    recording_state["stream"] = None
+    recording_state["frames"] = []
+    print_and_log("Recording cancelled/discarded.")
+
 
 def generate_presence_message(event_type):
     """

@@ -178,19 +178,30 @@ document.addEventListener("DOMContentLoaded", () => {
         btnRerecord.style.display = 'none';
     }
 
-    btnRecord.addEventListener('click', () => {
-        // Simulate recording for 2.5 seconds
-        btnRecord.disabled = true;
-        btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: blink 1s infinite;"></span> [ RECORDING... ]`;
+    let isCurrentlyRecording = false;
 
-        setTimeout(() => {
+    btnRecord.addEventListener('click', () => {
+        if (!isCurrentlyRecording) {
+            // Start real audio recording
+            isCurrentlyRecording = true;
+            try { eel.start_recording(currentWizardState.name, currentWizardState.phraseIndex)(); } catch(e){}
+
+            btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: blink 1s infinite;"></span> [ STOP RECORDING ]`;
+        } else {
+            // Stop recording
+            isCurrentlyRecording = false;
+            try { eel.stop_recording()(); } catch(e){}
+
             btnRecord.style.display = 'none';
             btnAccept.style.display = 'block';
             btnRerecord.style.display = 'block';
-        }, 2500);
+        }
     });
 
-    btnRerecord.addEventListener('click', updateWizardUI);
+    btnRerecord.addEventListener('click', () => {
+        try { eel.cancel_recording()(); } catch(e){}
+        updateWizardUI();
+    });
 
     btnAccept.addEventListener('click', () => {
         currentWizardState.phraseIndex++;
