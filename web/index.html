@@ -162,9 +162,15 @@
 
                         <div class="form-group">
                             <label>Input Microphone</label>
-                            <select id="audio-device-select" class="cyber-input">
+                            <select id="audio-device-select" class="cyber-input" style="margin-bottom: 10px;">
                                 <option value="">Loading devices...</option>
                             </select>
+
+                            <label style="display: flex; justify-content: space-between;">
+                                <span>Software Gain (Volume Boost)</span>
+                                <span id="gain-value-display" style="color: var(--cyan);">1.0x</span>
+                            </label>
+                            <input type="range" id="audio-gain-slider" min="0.1" max="10.0" step="0.1" value="1.0" style="width: 100%; accent-color: var(--cyan); cursor: pointer;">
                         </div>
 
                         <div class="form-group">

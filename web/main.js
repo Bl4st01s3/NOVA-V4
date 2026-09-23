@@ -384,7 +384,31 @@ document.addEventListener("DOMContentLoaded", () => {
             deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
         }
     }
-    setTimeout(loadAudioDevices, 500);
+
+    // Audio Gain Slider Logic
+    function initAudioGain() {
+        const gainSlider = document.getElementById('audio-gain-slider');
+        const gainDisplay = document.getElementById('gain-value-display');
+
+        // Load saved or default to 1.0
+        const savedGain = localStorage.getItem('nova_audio_gain') || "1.0";
+        gainSlider.value = savedGain;
+        gainDisplay.innerText = `${parseFloat(savedGain).toFixed(1)}x`;
+        try { eel.set_mic_gain(savedGain)(); } catch(e){}
+
+        // Event listener
+        gainSlider.addEventListener('input', () => {
+            const val = parseFloat(gainSlider.value).toFixed(1);
+            gainDisplay.innerText = `${val}x`;
+            localStorage.setItem('nova_audio_gain', val);
+            try { eel.set_mic_gain(val)(); } catch(e){}
+        });
+    }
+
+    setTimeout(() => {
+        loadAudioDevices();
+        initAudioGain();
+    }, 500);
 
     // Helper functions for Chat
     function appendMessage(sender, text) {
