@@ -176,20 +176,9 @@
 
                     <div class="settings-card">
                         <h4>Dynamic Briefing Configuration</h4>
-                        <p class="card-desc">Select the data streams NOVA should include in her dynamic presence greeting report.</p>
-                        <div class="form-group" style="display: flex; gap: 15px; flex-direction: column;">
-                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                <input type="checkbox" id="brief-weather" checked>
-                                <span>Include Local Weather Data</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                <input type="checkbox" id="brief-printer" checked>
-                                <span>Include 3D Printer Status (OctoPrint)</span>
-                            </label>
-                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                                <input type="checkbox" id="brief-calendar">
-                                <span>Include Daily Calendar/Schedule</span>
-                            </label>
+                        <p class="card-desc">Select the modular data streams NOVA should execute and include in her dynamic presence greeting report.</p>
+                        <div class="form-group" id="dynamic-tools-container" style="display: flex; gap: 15px; flex-direction: column;">
+                            <!-- Checkboxes populated dynamically by JS based on tools/ folder -->
                         </div>
                     </div>
 

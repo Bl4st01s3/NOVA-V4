@@ -1,0 +1,17 @@
+2026-09-23 02:46:07,918 - INFO - NOVA UI Initialized. Launching window...
+2026-09-23 02:46:07,920 - INFO - Starting local webhook presence API on http://127.0.0.1:54321/presence
+2026-09-23 02:46:43,411 - INFO - [PRESENCE API] User returned (Wakeup mode).
+2026-09-23 02:46:43,411 - INFO - [PRESENCE API] User was away for 1790131603s. Triggering greeting.
+2026-09-23 02:46:55,317 - INFO - Executing tool script: tools/weather/main.py
+2026-09-23 02:46:55,366 - INFO - Retrying request in 0.482896 seconds (retry 1 of 2)
+2026-09-23 02:46:55,852 - INFO - Retrying request in 0.785023 seconds (retry 2 of 2)
+2026-09-23 02:46:56,640 - ERROR - Failed to generate presence message: Connection error.
+2026-09-23 02:57:44,849 - INFO - Starting local webhook presence API on http://127.0.0.1:54321/presence
+2026-09-23 02:57:44,896 - INFO - NOVA UI Initialized. Launching window...
+2026-09-23 02:58:05,003 - INFO - [PRESENCE API] User returned (Wakeup mode).
+2026-09-23 02:58:05,003 - INFO - [PRESENCE API] User was away for 1790132285s. Triggering greeting.
+2026-09-23 02:58:16,656 - INFO - Executing tool script: tools/weather/main.py
+127.0.0.1 - - [23/Sep/2026 02:58:16] "POST /presence HTTP/1.1" 200 -
+2026-09-23 02:58:16,700 - INFO - Retrying request in 0.481072 seconds (retry 1 of 2)
+2026-09-23 02:58:17,184 - INFO - Retrying request in 0.942252 seconds (retry 2 of 2)
+2026-09-23 02:58:18,129 - ERROR - Failed to generate presence message: Connection error.

@@ -233,41 +233,68 @@ document.addEventListener("DOMContentLoaded", () => {
         }, 2000);
     });
 
-    // Briefing Preferences Logic
-    const briefCheckboxes = ['brief-weather', 'brief-printer', 'brief-calendar'];
+    // Briefing Preferences Logic (Dynamic Tools)
+    async function loadDynamicTools() {
+        const toolsContainer = document.getElementById('dynamic-tools-container');
+        try {
+            const availableTools = await eel.get_available_tools()();
 
-    function loadBriefingPrefs() {
-        briefCheckboxes.forEach(id => {
-            const val = localStorage.getItem(id);
-            if (val !== null) {
-                document.getElementById(id).checked = (val === 'true');
+            if (availableTools.length === 0) {
+                toolsContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No tools found in /tools directory.</p>';
+                return;
             }
-        });
-        syncBriefingPrefs();
+
+            toolsContainer.innerHTML = ''; // Clear container
+
+            availableTools.forEach(toolName => {
+                const label = document.createElement('label');
+                label.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer;";
+
+                const checkbox = document.createElement('input');
+                checkbox.type = "checkbox";
+                checkbox.id = `brief-tool-${toolName}`;
+
+                // Capitalize first letter for display
+                const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+
+                const span = document.createElement('span');
+                span.innerText = `Include ${displayName} Data`;
+
+                label.appendChild(checkbox);
+                label.appendChild(span);
+                toolsContainer.appendChild(label);
+
+                // Load saved state or default to true
+                const savedVal = localStorage.getItem(`nova_tool_${toolName}`);
+                checkbox.checked = savedVal === null ? true : (savedVal === 'true');
+
+                // Event listener
+                checkbox.addEventListener('change', () => {
+                    localStorage.setItem(`nova_tool_${toolName}`, checkbox.checked);
+                    syncBriefingPrefs(availableTools);
+                });
+            });
+
+            syncBriefingPrefs(availableTools);
+
+        } catch (e) {
+            console.error("Failed to load tools from backend.", e);
+        }
     }
 
-    function syncBriefingPrefs() {
-        const prefs = {
-            weather: document.getElementById('brief-weather').checked,
-            printer: document.getElementById('brief-printer').checked,
-            calendar: document.getElementById('brief-calendar').checked
-        };
-        // Send to backend
+    function syncBriefingPrefs(availableTools) {
+        const prefs = {};
+        availableTools.forEach(toolName => {
+            prefs[toolName] = document.getElementById(`brief-tool-${toolName}`).checked;
+        });
+
         try {
             eel.update_briefing_prefs(prefs)();
         } catch(e) {}
     }
 
-    briefCheckboxes.forEach(id => {
-        const el = document.getElementById(id);
-        el.addEventListener('change', () => {
-            localStorage.setItem(id, el.checked);
-            syncBriefingPrefs();
-        });
-    });
-
-    // Load initial prefs after a small delay to ensure Eel is ready
-    setTimeout(loadBriefingPrefs, 500);
+    // Load dynamic tools after a small delay to ensure Eel is ready
+    setTimeout(loadDynamicTools, 500);
 
     // Helper functions for Chat
     function appendMessage(sender, text) {
