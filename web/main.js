@@ -388,29 +388,57 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Audio Gain Slider Logic
-    function initAudioGain() {
+    // Audio Filter Sliders Logic
+    function initAudioFilters() {
+        // Gain
         const gainSlider = document.getElementById('audio-gain-slider');
         const gainDisplay = document.getElementById('gain-value-display');
 
-        // Load saved or default to 1.0
         const savedGain = localStorage.getItem('nova_audio_gain') || "1.0";
         gainSlider.value = savedGain;
         gainDisplay.innerText = `${parseFloat(savedGain).toFixed(1)}x`;
         try { eel.set_mic_gain(savedGain)(); } catch(e){}
 
-        // Event listener
         gainSlider.addEventListener('input', () => {
             const val = parseFloat(gainSlider.value).toFixed(1);
             gainDisplay.innerText = `${val}x`;
             localStorage.setItem('nova_audio_gain', val);
             try { eel.set_mic_gain(val)(); } catch(e){}
         });
+
+        // Noise Gate
+        const gateSlider = document.getElementById('audio-gate-slider');
+        const gateDisplay = document.getElementById('gate-value-display');
+
+        const savedGate = localStorage.getItem('nova_audio_gate') || "-40";
+        gateSlider.value = savedGate;
+        gateDisplay.innerText = `${savedGate} dB`;
+        try { eel.set_noise_gate(savedGate)(); } catch(e){}
+
+        gateSlider.addEventListener('input', () => {
+            const val = gateSlider.value;
+            gateDisplay.innerText = `${val} dB`;
+            localStorage.setItem('nova_audio_gate', val);
+            try { eel.set_noise_gate(val)(); } catch(e){}
+        });
+
+        // Spectral Noise Reduction
+        const spectralCheckbox = document.getElementById('audio-spectral-nr');
+        const savedSpectral = localStorage.getItem('nova_audio_spectral');
+        if (savedSpectral !== null) {
+            spectralCheckbox.checked = (savedSpectral === 'true');
+        }
+        try { eel.set_spectral_nr(spectralCheckbox.checked)(); } catch(e){}
+
+        spectralCheckbox.addEventListener('change', () => {
+            localStorage.setItem('nova_audio_spectral', spectralCheckbox.checked);
+            try { eel.set_spectral_nr(spectralCheckbox.checked)(); } catch(e){}
+        });
     }
 
     setTimeout(() => {
         loadAudioDevices();
-        initAudioGain();
+        initAudioFilters();
     }, 500);
 
     // Helper functions for Chat
