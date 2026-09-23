@@ -195,12 +195,15 @@ document.addEventListener("DOMContentLoaded", () => {
             const vuLevel = document.getElementById('vu-level');
             vuContainer.style.display = 'block';
 
+            // Adjust background-size dynamically so the gradient spans the full width of the parent container
+            // regardless of the child's current width percentage
+            const parentWidth = vuContainer.clientWidth;
+            vuLevel.style.backgroundSize = `${parentWidth}px 10px`;
+
             vuInterval = setInterval(async () => {
                 try {
-                    const rms = await eel.get_current_volume()();
-                    // Map typical RMS values (0 to ~0.5 for loud speech) to 0-100%
-                    let percent = (rms * 200);
-                    if (percent > 100) percent = 100;
+                    // We will now receive a normalized 0-100 value from the backend
+                    let percent = await eel.get_current_volume()();
                     vuLevel.style.width = `${percent}%`;
                 } catch(e) {}
             }, 50);

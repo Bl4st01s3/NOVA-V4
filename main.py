@@ -277,16 +277,36 @@ def audio_callback(indata, frames, time_info, status):
     # Apply software gain and clip to valid audio range [-1.0, 1.0]
     boosted_data = np.clip(indata * mic_gain, -1.0, 1.0)
 
-    # Calculate RMS for VU meter using the boosted data
+    # Calculate RMS
     rms = np.sqrt(np.mean(boosted_data**2))
-    current_volume_rms = float(rms)
+
+    # Convert RMS to Decibels (dBFS)
+    # A full-scale sine wave has an RMS of 0.707 (which we consider 0 dBFS max)
+    # The noise floor of a mic is usually around -60 dBFS
+    if rms > 0:
+        db = 20 * np.log10(rms)
+    else:
+        db = -100 # Silence
+
+    # Normalize dB to a 0-100 percentage for the UI
+    # Let's say -50 dB is 0% (silence/background noise), and 0 dB is 100% (clipping loud)
+    min_db = -50
+    max_db = 0
+    percent = ((db - min_db) / (max_db - min_db)) * 100
+    percent = np.clip(percent, 0, 100)
+
+    # Smooth the fall-off (Peak Hold) so the meter doesn't instantly drop to 0 between syllables
+    if percent > current_volume_rms:
+        current_volume_rms = float(percent) # instant jump up
+    else:
+        current_volume_rms = float(current_volume_rms * 0.8 + percent * 0.2) # smooth glide down
 
     if recording_state["is_recording"]:
         recording_state["frames"].append(boosted_data.copy())
 
 @eel.expose
 def get_current_volume():
-    """Returns the current RMS volume level."""
+    """Returns the current smoothed 0-100 VU percentage."""
     return current_volume_rms
 
 @eel.expose
