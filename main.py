@@ -232,15 +232,51 @@ recording_state = {
     "frames": [],
     "sample_rate": 44100,
     "current_profile": "",
-    "current_phrase": 0
+    "current_phrase": 0,
+    "device_id": None
 }
+
+@eel.expose
+def get_audio_devices():
+    """Returns a list of available input devices."""
+    try:
+        devices = sd.query_devices()
+        input_devices = []
+        for i, dev in enumerate(devices):
+            if dev['max_input_channels'] > 0:
+                input_devices.append({"id": i, "name": dev['name']})
+        return input_devices
+    except Exception as e:
+        log_error(f"Failed to query audio devices: {e}")
+        return []
+
+@eel.expose
+def set_audio_device(device_id):
+    """Sets the active microphone device ID."""
+    if device_id is not None:
+        recording_state["device_id"] = int(device_id)
+        print_and_log(f"Audio input device set to ID: {device_id}")
+
+# Global to hold instantaneous volume level
+current_volume_rms = 0.0
 
 def audio_callback(indata, frames, time_info, status):
     """Called by sounddevice for each audio block."""
+    global current_volume_rms
     if status:
         log_error(f"Audio Callback Status: {status}")
+
+    # Calculate RMS for VU meter
+    rms = np.sqrt(np.mean(indata**2))
+    current_volume_rms = float(rms)
+
     if recording_state["is_recording"]:
         recording_state["frames"].append(indata.copy())
+
+@eel.expose
+def get_current_volume():
+    """Returns the current RMS volume level."""
+    return current_volume_rms
 
 @eel.expose
 def start_recording(profile_name, phrase_index):
@@ -258,6 +294,7 @@ def start_recording(profile_name, phrase_index):
         recording_state["stream"] = sd.InputStream(
             samplerate=recording_state["sample_rate"],
             channels=1,
+            device=recording_state["device_id"],
             callback=audio_callback
         )
         recording_state["stream"].start()

@@ -131,17 +131,24 @@
                             </p>
                         </div>
 
-                        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                            <button class="cyber-btn" id="vp-btn-record" style="width: auto; padding: 10px 30px;">
-                                <span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: none;"></span> [ RECORD ]
-                            </button>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                            <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                                <button class="cyber-btn" id="vp-btn-record" style="width: auto; padding: 10px 30px;">
+                                    <span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: none;"></span> [ RECORD ]
+                                </button>
 
-                            <button class="cyber-btn" id="vp-btn-accept" style="display: none; width: auto; border-color: var(--cyan); color: var(--cyan);">
-                                [ ACCEPT ]
-                            </button>
-                            <button class="cyber-btn" id="vp-btn-rerecord" style="display: none; width: auto;">
-                                [ RE-RECORD ]
-                            </button>
+                                <button class="cyber-btn" id="vp-btn-accept" style="display: none; width: auto; border-color: var(--cyan); color: var(--cyan);">
+                                    [ ACCEPT ]
+                                </button>
+                                <button class="cyber-btn" id="vp-btn-rerecord" style="display: none; width: auto;">
+                                    [ RE-RECORD ]
+                                </button>
+                            </div>
+
+                            <!-- VU Meter -->
+                            <div id="vu-meter-container" style="display: none; width: 80%; height: 10px; background: rgba(0,0,0,0.5); border: 1px solid var(--purple); border-radius: 5px; overflow: hidden;">
+                                <div id="vu-level" style="width: 0%; height: 100%; background: linear-gradient(90deg, #00f3ff, #0f0, #ff0, #f00); transition: width 0.05s linear;"></div>
+                            </div>
                         </div>
 
                         <button class="cyber-btn" id="vp-btn-cancel" style="margin-top: 20px; border-color: #555; color: #888;">
@@ -151,7 +158,15 @@
 
                     <div class="settings-card">
                         <h4>Audio Engine</h4>
-                        <p class="card-desc">Configure local TTS output and acoustic filters.</p>
+                        <p class="card-desc">Configure input microphone, local TTS output, and acoustic filters.</p>
+
+                        <div class="form-group">
+                            <label>Input Microphone</label>
+                            <select id="audio-device-select" class="cyber-input">
+                                <option value="">Loading devices...</option>
+                            </select>
+                        </div>
+
                         <div class="form-group">
                             <label>Voice Effect</label>
                             <select class="cyber-input">
