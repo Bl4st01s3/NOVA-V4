@@ -167,6 +167,9 @@ presence_state = {
     "last_event_time": 0
 }
 
+# Stores the dynamic Eel port registered by the frontend on load
+dynamic_ui_port = None
+
 briefing_prefs = {
     "weather": True,
     "printer": True,
@@ -194,6 +197,30 @@ def update_briefing_prefs(prefs):
     global briefing_prefs
     briefing_prefs.update(prefs)
     print_and_log(f"Updated Briefing Preferences: {briefing_prefs}")
+
+# --- Voice Profile Persistence ---
+VOICE_PROFILES_FILE = "voice_profiles.json"
+
+@eel.expose
+def get_voice_profiles():
+    """Loads voice profiles from disk so they survive updates and cache clears."""
+    if os.path.exists(VOICE_PROFILES_FILE):
+        try:
+            with open(VOICE_PROFILES_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log_error(f"Failed to load voice profiles: {e}")
+    return []
+
+@eel.expose
+def update_voice_profiles(profiles):
+    """Saves voice profiles to disk."""
+    try:
+        with open(VOICE_PROFILES_FILE, "w", encoding="utf-8") as f:
+            json.dump(profiles, f, indent=4)
+        print_and_log("Voice profiles saved to disk.")
+    except Exception as e:
+        log_error(f"Failed to save voice profiles: {e}")
 
 def generate_presence_message(event_type):
     """
@@ -300,10 +327,43 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
-        self.wfile.write(json.dumps(message).encode('utf-8'))
+        if message:
+            self.wfile.write(json.dumps(message).encode('utf-8'))
+
+    def do_GET(self):
+        if self.path == '/obs':
+            global dynamic_ui_port
+            if dynamic_ui_port:
+                # 302 Redirect to the dynamic OBS overlay URL
+                redirect_url = f"http://127.0.0.1:{dynamic_ui_port}/obs_overlay.html"
+                self.send_response(302)
+                self.send_header('Location', redirect_url)
+                self.end_headers()
+            else:
+                self._send_response(503, {"error": "UI Port not registered yet. Open the main NOVA app first."})
+        else:
+            self._send_response(404, {"error": "Not found"})
 
     def do_POST(self):
-        if self.path == '/presence':
+        global dynamic_ui_port
+
+        if self.path == '/register_port':
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                post_data = self.rfile.read(content_length)
+                try:
+                    data = json.loads(post_data.decode('utf-8'))
+                    port = data.get('port')
+                    if port:
+                        dynamic_ui_port = port
+                        print_and_log(f"Dynamic UI port registered: {port}")
+                        self._send_response(200, {"status": "success"})
+                    else:
+                        self._send_response(400, {"error": "Missing port"})
+                except json.JSONDecodeError:
+                    self._send_response(400, {"error": "Invalid JSON"})
+
+        elif self.path == '/presence':
             content_length = int(self.headers.get('Content-Length', 0))
             if content_length > 0:
                 post_data = self.rfile.read(content_length)
