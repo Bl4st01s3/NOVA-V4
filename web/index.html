@@ -147,7 +147,8 @@
 
                             <!-- VU Meter -->
                             <div id="vu-meter-container" style="display: none; width: 80%; height: 10px; background: rgba(0,0,0,0.5); border: 1px solid var(--purple); border-radius: 5px; overflow: hidden;">
-                                <div id="vu-level" style="width: 0%; height: 100%; background: linear-gradient(90deg, #00f3ff, #0f0, #ff0, #f00); transition: width 0.05s linear;"></div>
+                                <!-- The level container maintains a fixed gradient, but clips its content to the width percentage -->
+                                <div id="vu-level" style="width: 0%; height: 100%; background: linear-gradient(90deg, #00f3ff 0%, #0f0 40%, #ff0 75%, #f00 100%); background-size: 200px 10px; transition: width 0.05s ease-out;"></div>
                             </div>
                         </div>
 
