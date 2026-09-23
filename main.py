@@ -257,8 +257,16 @@ def set_audio_device(device_id):
         recording_state["device_id"] = int(device_id)
         print_and_log(f"Audio input device set to ID: {device_id}")
 
-# Global to hold instantaneous volume level
+# Global to hold instantaneous volume level and gain multiplier
 current_volume_rms = 0.0
+mic_gain = 1.0
+
+@eel.expose
+def set_mic_gain(gain_multiplier):
+    """Sets the software audio gain multiplier."""
+    global mic_gain
+    mic_gain = float(gain_multiplier)
+    print_and_log(f"Microphone gain set to: {mic_gain}x")
 
 def audio_callback(indata, frames, time_info, status):
     """Called by sounddevice for each audio block."""
@@ -266,12 +274,15 @@ def audio_callback(indata, frames, time_info, status):
     if status:
         log_error(f"Audio Callback Status: {status}")
 
-    # Calculate RMS for VU meter
-    rms = np.sqrt(np.mean(indata**2))
+    # Apply software gain and clip to valid audio range [-1.0, 1.0]
+    boosted_data = np.clip(indata * mic_gain, -1.0, 1.0)
+
+    # Calculate RMS for VU meter using the boosted data
+    rms = np.sqrt(np.mean(boosted_data**2))
     current_volume_rms = float(rms)
 
     if recording_state["is_recording"]:
-        recording_state["frames"].append(indata.copy())
+        recording_state["frames"].append(boosted_data.copy())
 
 @eel.expose
 def get_current_volume():
