@@ -176,9 +176,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
         btnAccept.style.display = 'none';
         btnRerecord.style.display = 'none';
+        document.getElementById('vu-meter-container').style.display = 'none';
     }
 
     let isCurrentlyRecording = false;
+    let vuInterval = null;
 
     btnRecord.addEventListener('click', () => {
         if (!isCurrentlyRecording) {
@@ -187,9 +189,28 @@ document.addEventListener("DOMContentLoaded", () => {
             try { eel.start_recording(currentWizardState.name, currentWizardState.phraseIndex)(); } catch(e){}
 
             btnRecord.innerHTML = `<span class="dot" style="display:inline-block; background-color: red; box-shadow: 0 0 10px red; animation: blink 1s infinite;"></span> [ STOP RECORDING ]`;
+
+            // Show VU Meter and start polling
+            const vuContainer = document.getElementById('vu-meter-container');
+            const vuLevel = document.getElementById('vu-level');
+            vuContainer.style.display = 'block';
+
+            vuInterval = setInterval(async () => {
+                try {
+                    const rms = await eel.get_current_volume()();
+                    // Map typical RMS values (0 to ~0.5 for loud speech) to 0-100%
+                    let percent = (rms * 200);
+                    if (percent > 100) percent = 100;
+                    vuLevel.style.width = `${percent}%`;
+                } catch(e) {}
+            }, 50);
+
         } else {
             // Stop recording
             isCurrentlyRecording = false;
+            if(vuInterval) clearInterval(vuInterval);
+            document.getElementById('vu-meter-container').style.display = 'none';
+
             try { eel.stop_recording()(); } catch(e){}
 
             btnRecord.style.display = 'none';
@@ -322,6 +343,48 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Load dynamic tools after a small delay to ensure Eel is ready
     setTimeout(loadDynamicTools, 500);
+
+    // Audio Device Selection Logic
+    async function loadAudioDevices() {
+        const deviceSelect = document.getElementById('audio-device-select');
+        try {
+            const devices = await eel.get_audio_devices()();
+            deviceSelect.innerHTML = ''; // clear loading text
+
+            if (devices.length === 0) {
+                deviceSelect.innerHTML = '<option value="">No microphones found</option>';
+                return;
+            }
+
+            devices.forEach(dev => {
+                const opt = document.createElement('option');
+                opt.value = dev.id;
+                opt.innerText = dev.name;
+                deviceSelect.appendChild(opt);
+            });
+
+            // Load saved preference or default to first
+            const savedDevice = localStorage.getItem('nova_audio_device_id');
+            if (savedDevice !== null) {
+                deviceSelect.value = savedDevice;
+                eel.set_audio_device(savedDevice)();
+            } else {
+                eel.set_audio_device(devices[0].id)();
+            }
+
+            // Handle changes
+            deviceSelect.addEventListener('change', () => {
+                const selectedId = deviceSelect.value;
+                localStorage.setItem('nova_audio_device_id', selectedId);
+                eel.set_audio_device(selectedId)();
+            });
+
+        } catch(e) {
+            console.error("Failed to load audio devices", e);
+            deviceSelect.innerHTML = '<option value="">Error loading devices</option>';
+        }
+    }
+    setTimeout(loadAudioDevices, 500);
 
     // Helper functions for Chat
     function appendMessage(sender, text) {
