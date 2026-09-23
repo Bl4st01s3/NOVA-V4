@@ -10,6 +10,7 @@ import subprocess
 import sounddevice as sd
 import numpy as np
 import scipy.io.wavfile as wav
+import scipy.signal as signal
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
@@ -260,6 +261,14 @@ def set_audio_device(device_id):
 # Global to hold instantaneous volume level and gain multiplier
 current_volume_rms = 0.0
 mic_gain = 1.0
+noise_gate_db = -40.0 # Default noise gate threshold
+use_spectral_nr = True
+
+@eel.expose
+def set_spectral_nr(enabled):
+    global use_spectral_nr
+    use_spectral_nr = bool(enabled)
+    print_and_log(f"Spectral Noise Reduction set to: {use_spectral_nr}")
 
 @eel.expose
 def set_mic_gain(gain_multiplier):
@@ -267,6 +276,13 @@ def set_mic_gain(gain_multiplier):
     global mic_gain
     mic_gain = float(gain_multiplier)
     print_and_log(f"Microphone gain set to: {mic_gain}x")
+
+@eel.expose
+def set_noise_gate(db_threshold):
+    """Sets the noise gate threshold."""
+    global noise_gate_db
+    noise_gate_db = float(db_threshold)
+    print_and_log(f"Noise gate set to: {noise_gate_db} dB")
 
 def audio_callback(indata, frames, time_info, status):
     """Called by sounddevice for each audio block."""
@@ -282,11 +298,15 @@ def audio_callback(indata, frames, time_info, status):
 
     # Convert RMS to Decibels (dBFS)
     # A full-scale sine wave has an RMS of 0.707 (which we consider 0 dBFS max)
-    # The noise floor of a mic is usually around -60 dBFS
     if rms > 0:
         db = 20 * np.log10(rms)
     else:
         db = -100 # Silence
+
+    # Apply Noise Gate logic to the actual saved audio frames
+    # If the volume is below the threshold, silence the frame entirely
+    if db < noise_gate_db:
+        boosted_data.fill(0.0)
 
     # Normalize dB to a 0-100 percentage for the UI
     # Let's say -50 dB is 0% (silence/background noise), and 0 dB is 100% (clipping loud)
@@ -352,7 +372,47 @@ def stop_recording():
             return False
 
         # Combine all audio chunks
-        audio_data = np.concatenate(recording_state["frames"], axis=0)
+        # squeeze() ensures it's a 1D array if channels=1 was shaped (N, 1)
+        audio_data = np.concatenate(recording_state["frames"], axis=0).squeeze()
+
+        if len(audio_data) > 0:
+            if use_spectral_nr:
+                # Spectral Noise Reduction via STFT
+                # Assume the first 0.3 seconds are "silence/room noise" before the user speaks
+                noise_sample_len = int(0.3 * recording_state["sample_rate"])
+                if len(audio_data) > noise_sample_len * 2:
+                    noise_sample = audio_data[:noise_sample_len]
+
+                    # Perform Short-Time Fourier Transform
+                    f, t, Zxx = signal.stft(audio_data, fs=recording_state["sample_rate"], nperseg=1024)
+
+                    # Get the noise profile (average magnitude across the noise sample's STFT frames)
+                    _, _, Zxx_noise = signal.stft(noise_sample, fs=recording_state["sample_rate"], nperseg=1024)
+                    noise_mag = np.mean(np.abs(Zxx_noise), axis=1, keepdims=True)
+
+                    # Spectral Subtraction: Subtract noise magnitude from signal magnitude
+                    sig_mag = np.abs(Zxx)
+                    sig_phase = np.angle(Zxx)
+
+                    # Oversubtraction factor to aggressively kill hiss (e.g. 2.0), and a spectral floor to prevent musical noise
+                    alpha = 2.0
+                    spectral_floor = 0.05 * noise_mag
+
+                    clean_mag = sig_mag - (alpha * noise_mag)
+                    clean_mag = np.maximum(clean_mag, spectral_floor)
+
+                    # Reconstruct complex STFT and perform Inverse STFT
+                    Zxx_clean = clean_mag * np.exp(1j * sig_phase)
+                    _, audio_data = signal.istft(Zxx_clean, fs=recording_state["sample_rate"])
+
+            # Apply High-Pass Filter (80Hz cutoff) to remove low-frequency rumble
+            nyquist = 0.5 * recording_state["sample_rate"]
+            cutoff = 80.0 / nyquist
+            b, a = signal.butter(4, cutoff, btype='high', analog=False)
+            audio_data = signal.filtfilt(b, a, audio_data)
+
+            # Ensure it stays within safe float32 bounds after filtering
+            audio_data = np.clip(audio_data, -1.0, 1.0)
 
         # Create user directory if it doesn't exist
         safe_name = "".join([c for c in recording_state["current_profile"] if c.isalpha() or c.isdigit() or c==' ']).rstrip()
@@ -361,7 +421,7 @@ def stop_recording():
 
         # Save to .wav
         filename = os.path.join(save_dir, f"phrase_{recording_state['current_phrase']}.wav")
-        wav.write(filename, recording_state["sample_rate"], audio_data)
+        wav.write(filename, recording_state["sample_rate"], audio_data.astype(np.float32))
 
         print_and_log(f"Successfully saved voice sample: {filename}")
         return True
