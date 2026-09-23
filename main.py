@@ -5,9 +5,30 @@ import os
 import threading
 import json
 import time
+import logging
+import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+
+# Setup centralized logging to file
+log_file = open('nova.log', 'a')
+sys.stdout = log_file
+sys.stderr = log_file
+
+logging.basicConfig(
+    stream=sys.stdout,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+def print_and_log(message):
+    # Now that sys.stdout is redirected, print() naturally goes to the log file.
+    # We also log it for formatting consistency where needed.
+    logging.info(message)
+
+def log_error(message):
+    logging.error(message)
 
 # Initialize OpenAI client to connect to local LM Studio server
 # Bionic / LM Studio runs an OpenAI-compatible server typically on port 1234
@@ -40,13 +61,13 @@ def send_message_to_nova(user_text):
     """
     Called from JS when the user sends a message.
     """
-    print(f"User: {user_text}")
+    print_and_log(f"User: {user_text}")
 
     # Notify OBS Overlay that we are processing/talking
     try:
         eel.setNovaState('talking')()
     except Exception as e:
-        print(f"Info: Could not update OBS state (is OBS overlay open?): {e}")
+        log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     # Append user message to history
     conversation_history.append({"role": "user", "content": user_text})
@@ -62,7 +83,7 @@ def send_message_to_nova(user_text):
 
         # Select the ID of the first available model
         model_id = models.data[0].id
-        print(f"Using model: {model_id}")
+        print_and_log(f"Using model: {model_id}")
 
         # Define the tools available to NOVA
         tools = [
@@ -121,7 +142,7 @@ def send_message_to_nova(user_text):
             ai_text = message.content
             conversation_history.append({"role": "assistant", "content": ai_text})
 
-        print(f"NOVA: {ai_text}")
+        print_and_log(f"NOVA: {ai_text}")
 
         # Revert OBS to idle when done talking
         try: eel.setNovaState('idle')()
@@ -130,7 +151,7 @@ def send_message_to_nova(user_text):
         return ai_text
 
     except Exception as e:
-        print(f"Error communicating with LM Studio: {e}")
+        log_error(f"Error communicating with LM Studio: {e}")
         eel.addActivityLog('system', f"API Error: {str(e)}")
 
         # Set OBS to error state
@@ -153,10 +174,26 @@ briefing_prefs = {
 }
 
 @eel.expose
+def get_available_tools():
+    """Scans the tools/ directory and returns a list of available tool subdirectories."""
+    tools_dir = "tools"
+    if not os.path.exists(tools_dir):
+        return []
+
+    # Get all subdirectories in tools/ that contain a main.py
+    available_tools = []
+    for item in os.listdir(tools_dir):
+        item_path = os.path.join(tools_dir, item)
+        if os.path.isdir(item_path) and os.path.isfile(os.path.join(item_path, "main.py")):
+            available_tools.append(item)
+
+    return available_tools
+
+@eel.expose
 def update_briefing_prefs(prefs):
     global briefing_prefs
     briefing_prefs.update(prefs)
-    print(f"Updated Briefing Preferences: {briefing_prefs}")
+    print_and_log(f"Updated Briefing Preferences: {briefing_prefs}")
 
 def generate_presence_message(event_type):
     """
@@ -169,20 +206,46 @@ def generate_presence_message(event_type):
     if event_type == "wakeup":
         prompt = f"The user has just returned to their desk. The current time is {current_time_str}. Give a short, futuristic, JARVIS-like greeting to welcome them back."
 
-        # Add dynamic briefing elements based on preferences
-        brief_elements = []
-        if briefing_prefs.get("weather"):
-            brief_elements.append("the current local weather (you can hallucinate placeholder data like 'raining and 6 Degrees Celsius' for now to demonstrate the capability)")
-        if briefing_prefs.get("printer"):
-            brief_elements.append("the status of the 2.4 3D printer (you can hallucinate placeholder data like 'finished its print at 6:47am, bed is 42C, ready to be removed' to demonstrate the capability)")
-        if briefing_prefs.get("calendar"):
-            brief_elements.append("a quick summary of today's schedule (hallucinate 1 or 2 placeholder events)")
+        # Execute dynamically enabled tools to build the briefing report
+        reports = []
+        for tool_name, is_enabled in briefing_prefs.items():
+            if is_enabled:
+                script_path = os.path.join("tools", tool_name, "main.py")
+                if os.path.exists(script_path):
+                    try:
+                        print_and_log(f"Executing tool script: {script_path}")
+                        # Setup subprocess flags to hide terminal window on Windows
+                        creationflags = 0
+                        if os.name == 'nt':
+                            creationflags = subprocess.CREATE_NO_WINDOW
 
-        if brief_elements:
-            prompt += " As part of your greeting, include a quick briefing report containing: " + ", ".join(brief_elements) + "."
-            prompt += " Format it smoothly and ask if they need anything else."
+                        # Ensure we use 'python' to execute the sub-tool so it can print output safely,
+                        # avoiding crashes if the main app was launched with pythonw
+                        python_exe = sys.executable.replace("pythonw.exe", "python.exe")
 
-        prompt += " Do not use tools, just return the plain text greeting."
+                        # Run the tool and capture its output
+                        result = subprocess.run(
+                            [python_exe, script_path, "--report"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
+                            creationflags=creationflags
+                        )
+
+                        if result.returncode == 0 and result.stdout.strip():
+                            reports.append(result.stdout.strip())
+                        else:
+                            log_error(f"Tool {tool_name} returned an error or empty output: {result.stderr}")
+                    except Exception as e:
+                        log_error(f"Failed to execute tool {tool_name}: {e}")
+
+        if reports:
+            prompt += " As part of your greeting, seamlessly weave in the following data points into a short briefing report: \n"
+            for r in reports:
+                prompt += f"- {r}\n"
+            prompt += "\nFormat it smoothly as spoken dialogue and end by asking if they need anything else."
+
+        prompt += " Do not use tools or JSON, just return the plain text spoken dialogue."
 
     elif event_type == "leaving":
         prompt = f"The user is leaving their desk. The current time is {current_time_str}. Give a short, futuristic, JARVIS-like farewell. Do not use tools, just return the plain text farewell."
@@ -213,7 +276,7 @@ def generate_presence_message(event_type):
         )
 
         ai_text = response.choices[0].message.content
-        print(f"NOVA (Presence): {ai_text}")
+        print_and_log(f"NOVA (Presence): {ai_text}")
 
         # Push message directly to the chat UI and history
         conversation_history.append({"role": "assistant", "content": ai_text})
@@ -228,7 +291,7 @@ def generate_presence_message(event_type):
         except Exception as e: pass
 
     except Exception as e:
-        print(f"Failed to generate presence message: {e}")
+        log_error(f"Failed to generate presence message: {e}")
 
 
 class PresenceRequestHandler(BaseHTTPRequestHandler):
@@ -250,18 +313,18 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
                     now = time.time()
 
                     if event == "sleep":
-                        print("\n[PRESENCE API] User has gone idle/left (Sleep mode).")
+                        print_and_log("[PRESENCE API] User has gone idle/left (Sleep mode).")
                         presence_state["is_present"] = False
                         presence_state["last_event_time"] = now
                         try: eel.addActivityLog('system', "Vision system: User absent. Sleep mode activated.")()
                         except: pass
 
                     elif event == "wakeup":
-                        print("\n[PRESENCE API] User returned (Wakeup mode).")
+                        print_and_log("[PRESENCE API] User returned (Wakeup mode).")
                         time_away = now - presence_state["last_event_time"]
 
                         if not presence_state["is_present"] or time_away > 120:
-                            print(f"[PRESENCE API] User was away for {int(time_away)}s. Triggering greeting.")
+                            print_and_log(f"[PRESENCE API] User was away for {int(time_away)}s. Triggering greeting.")
                             try: eel.addActivityLog('system', "Vision system: User returned. Generating greeting.")()
                             except: pass
                             threading.Thread(target=generate_presence_message, args=("wakeup",), daemon=True).start()
@@ -271,7 +334,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
                         presence_state["last_seen"] = now
 
                     elif event == "leaving":
-                        print("\n[PRESENCE API] User is actively leaving.")
+                        print_and_log("[PRESENCE API] User is actively leaving.")
                         presence_state["is_present"] = False
                         presence_state["last_event_time"] = now
                         try: eel.addActivityLog('system', "Vision system: User actively leaving. Generating farewell.")()
@@ -289,7 +352,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
 def run_presence_server():
     port = 54321
     server = HTTPServer(('127.0.0.1', port), PresenceRequestHandler)
-    print(f"Starting local webhook presence API on http://127.0.0.1:{port}/presence")
+    print_and_log(f"Starting local webhook presence API on http://127.0.0.1:{port}/presence")
     server.serve_forever()
 
 
@@ -300,14 +363,14 @@ def start_app():
     # Initialize eel pointing to our 'web' folder
     eel.init('web')
 
-    print("NOVA UI Initialized. Launching window...")
+    print_and_log("NOVA UI Initialized. Launching window...")
 
     # Start the app. You can tweak geometry here.
     # port=0 forces the OS to pick a random available port, preventing 'Address already in use' errors.
     try:
         eel.start('index.html', size=(900, 700), position=(100, 100), port=0)
     except (SystemExit, KeyboardInterrupt):
-        print("NOVA shut down.")
+        print_and_log("NOVA shut down.")
 
 if __name__ == '__main__':
     start_app()

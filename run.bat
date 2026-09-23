@@ -16,7 +16,5 @@ call venv\Scripts\activate.bat
 pip install -r requirements.txt -q
 
 echo Starting NOVA UI...
-python main.py
-
-echo Exiting NOVA...
-pause
+:: pythonw runs the script without a terminal window popup
+start pythonw main.py
