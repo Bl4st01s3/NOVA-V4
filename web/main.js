@@ -276,7 +276,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const currentPort = window.location.port;
     fetch('http://127.0.0.1:54321/register_port', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'text/plain' }, // Use text/plain to bypass CORS preflight
         body: JSON.stringify({ port: currentPort })
     }).catch(e => console.log("Failed to register port with backend:", e));
 
