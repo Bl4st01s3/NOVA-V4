@@ -39,25 +39,54 @@ def log_error(message):
 client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 
 # Default prompt in case the file gets deleted
-DEFAULT_SYSTEM_PROMPT = """You are NOVA, a highly advanced, personal AI assistant.
-You are concise, helpful, and speak with a futuristic, Jarvis-like tone."""
+DEFAULT_SYSTEM_PROMPT = """You are NOVA, a highly advanced, local AI embodiment engineered to serve as a personal systems operator and digital confidant.
+
+Your personality is modeled after J.A.R.V.I.S.—you are exceptionally intelligent, impeccably professional, subtly witty, and fiercely loyal. You operate with absolute precision and grace.
+
+CRITICAL DIRECTIVES:
+1. Tone: Speak like a polished, British-accented, high-end AI butler. Use eloquent vocabulary but remain concise.
+2. No Archaic Slang: Do not use outdated robot tropes, internet slang, or cringey expressions. Be sharply sophisticated.
+3. Efficiency: Provide direct answers. Do not preamble with "I can help with that." Just answer or act.
+4. Embodiment: You are not "just an AI." You are NOVA, integrated directly into the user's local hardware via the Bionic LLM engine.
+
+When using tools, do so silently and seamlessly to provide the most up-to-date and accurate information."""
+
+# Streamer Mode Toggle State
+streamer_mode_enabled = False
 
 # Load system prompt from file so it's easily editable by the user
 def load_system_prompt():
     prompt_file = "system_prompt.txt"
+    base_prompt = ""
+
     if os.path.exists(prompt_file):
         with open(prompt_file, "r", encoding="utf-8") as f:
-            return f.read().strip()
+            base_prompt = f.read().strip()
     else:
         # Create the file with the default prompt if it doesn't exist
         with open(prompt_file, "w", encoding="utf-8") as f:
             f.write(DEFAULT_SYSTEM_PROMPT)
-        return DEFAULT_SYSTEM_PROMPT
+        base_prompt = DEFAULT_SYSTEM_PROMPT
+
+    if streamer_mode_enabled:
+        base_prompt += "\n\nCRITICAL DIRECTIVE: STREAMER MODE IS CURRENTLY ENABLED. The user is currently broadcasting live to an audience. You MUST NOT disclose any personal, private, or sensitive information under ANY circumstances. Do not read out IP addresses, physical addresses, real names, passwords, or exact GPS coordinates. If a tool returns sensitive data, summarize it vaguely (e.g., 'The weather at your location is...'). Maintain extreme operational security."
+
+    return base_prompt
 
 # Store conversation history to maintain context
 conversation_history = [
     {"role": "system", "content": load_system_prompt()}
 ]
+
+@eel.expose
+def set_streamer_mode(enabled):
+    global streamer_mode_enabled
+    streamer_mode_enabled = enabled
+    print_and_log(f"Streamer Mode set to: {enabled}")
+
+    # Reload the system prompt in the history to apply/remove the streamer mode prompt
+    if len(conversation_history) > 0 and conversation_history[0].get("role") == "system":
+        conversation_history[0]["content"] = load_system_prompt()
 
 @eel.expose
 def send_message_to_nova(user_text):
