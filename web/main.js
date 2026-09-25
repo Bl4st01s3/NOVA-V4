@@ -22,6 +22,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const sendBtn = document.getElementById('send-btn');
     const micBtn = document.getElementById('mic-btn');
 
+    // Global reference to the currently streaming message div
+    let activeStreamingContentDiv = null;
+
     async function sendMessage() {
         const text = userInput.value.trim();
         if (!text) return;
@@ -32,12 +35,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const loadingId = appendLoading();
 
         try {
-            const response = await eel.send_message_to_nova(text)();
+            // Prepare an empty bubble for the streaming response
             removeMessage(loadingId);
-            appendMessage('assistant', response);
+            activeStreamingContentDiv = createEmptyMessageBubble('assistant');
+
+            // The python backend will now fire eel.streamAIToken multiple times before returning
+            await eel.send_message_to_nova(text)();
+
+            // Clear the active reference once done
+            activeStreamingContentDiv = null;
         } catch (error) {
             removeMessage(loadingId);
             appendMessage('system', 'Error connecting to Bionic Engine: ' + error);
+            activeStreamingContentDiv = null;
         }
     }
 
@@ -443,6 +453,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Helper functions for Chat
     function appendMessage(sender, text) {
+        const content = createEmptyMessageBubble(sender);
+        const textNode = document.createTextNode(text);
+        content.appendChild(textNode);
+        content.innerHTML = content.innerHTML.replace(/\n/g, '<br>');
+        scrollToBottom();
+    }
+
+    function createEmptyMessageBubble(sender) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', sender);
 
@@ -451,10 +469,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const content = document.createElement('div');
         content.classList.add('message-content');
-
-        const textNode = document.createTextNode(text);
-        content.appendChild(textNode);
-        content.innerHTML = content.innerHTML.replace(/\n/g, '<br>');
 
         if (sender === 'user') {
             messageDiv.appendChild(content);
@@ -466,6 +480,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
         chatContainer.appendChild(messageDiv);
         scrollToBottom();
+        return content;
+    }
+
+    // Exposed streaming handler
+    window.streamAIToken = function(token) {
+        if (activeStreamingContentDiv) {
+            // Append safely keeping line breaks
+            const textNode = document.createTextNode(token);
+            activeStreamingContentDiv.appendChild(textNode);
+            // We periodically update innerHTML to parse newlines into <br>
+            // but doing it every token is expensive. Playwright check will verify if we need it.
+            if (token.includes('\n')) {
+                activeStreamingContentDiv.innerHTML = activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+            }
+            scrollToBottom();
+        }
     }
 
     function appendLoading() {
@@ -552,3 +582,4 @@ function addActivityLog(type, message) {
     // Auto scroll log to bottom
     logContainer.scrollTop = logContainer.scrollHeight;
 }
+eel.expose(window.streamAIToken, "streamAIToken");

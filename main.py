@@ -110,49 +110,88 @@ def send_message_to_nova(user_text):
             }
         ]
 
-        # Call the local LM Studio server
+        # Call the local LM Studio server with streaming AND tools enabled
         response = client.chat.completions.create(
             model=model_id,
             messages=conversation_history,
             temperature=0.7,
             tools=tools,
-            tool_choice="auto" # Let the model decide to use tools
+            tool_choice="auto",
+            stream=True
         )
 
-        message = response.choices[0].message
-
         ai_text = ""
+        full_json_args = ""
+        is_parsing_text = False
 
-        # Check if the AI decided to call a tool
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                eel.addActivityLog('tool', f"LLM decided to call tool: <b>{tool_call.function.name}</b>")
-                if tool_call.function.name == "speak":
-                    import json
-                    try:
-                        args = json.loads(tool_call.function.arguments)
-                        ai_text = args.get("text", "")
-                    except json.JSONDecodeError:
-                        ai_text = "Error: Failed to parse speech output."
+        # Iterate over the streamed chunks
+        for chunk in response:
+            delta = chunk.choices[0].delta
 
-            # For the history to be continuous in OpenAI format, we technically need to append the tool call
-            # and then append a 'tool' role response. Since we are just extracting text for the UI right now,
-            # we will store the extracted text directly as the assistant response so it remembers the conversation natively.
-            conversation_history.append({"role": "assistant", "content": ai_text})
+            # 1. Handle Tool Call Streaming (Llama outputting JSON)
+            if delta.tool_calls:
+                tc = delta.tool_calls[0]
+                if tc.function and tc.function.arguments:
+                    arg_chunk = tc.function.arguments
+                    full_json_args += arg_chunk
 
-        # Handle case where AI responds with standard text instead of a tool
-        elif message.content:
-            eel.addActivityLog('system', "LLM responded with standard text instead of using a tool.")
-            ai_text = message.content
-            conversation_history.append({"role": "assistant", "content": ai_text})
+                    # We only want to stream characters that belong to the "text" value.
+                    # As JSON builds, we watch for `{"text": "`
+                    # Once we hit the quote, we stream everything until the closing quote.
+                    # This is a naive but extremely fast real-time parser.
+                    if not is_parsing_text and '{"text": "' in full_json_args:
+                        is_parsing_text = True
+                        # If the chunk brought the start quote and some text, extract the text part
+                        start_idx = arg_chunk.find('{"text": "')
+                        if start_idx != -1:
+                            token = arg_chunk[start_idx + 10:]
+                            if token:
+                                ai_text += token
+                                try: eel.streamAIToken(token)()
+                                except Exception: pass
+                        continue
 
+                    if is_parsing_text:
+                        # Check if this chunk contains the closing quote of the JSON string
+                        if '"' in arg_chunk:
+                            # Stream only up to the quote
+                            token = arg_chunk.split('"')[0]
+                            is_parsing_text = False
+                        else:
+                            token = arg_chunk
+
+                        if token:
+                            ai_text += token
+                            try: eel.streamAIToken(token)()
+                            except Exception: pass
+
+            # 2. Handle Standard Content Streaming (Fallback if it ignores tools)
+            elif delta.content is not None:
+                token = delta.content
+                ai_text += token
+                try: eel.streamAIToken(token)()
+                except Exception: pass
+
+        # Finished generating.
+        if full_json_args:
+            print_and_log(f"NOVA RAW JSON: {full_json_args}")
+            eel.addActivityLog('tool', f"LLM called 'speak' tool. Raw JSON logged.")()
+            # Try to safely parse the final JSON to ensure ai_text is perfectly clean
+            try:
+                args = json.loads(full_json_args)
+                ai_text = args.get("text", ai_text)
+            except json.JSONDecodeError:
+                pass
+
+        conversation_history.append({"role": "assistant", "content": ai_text})
         print_and_log(f"NOVA: {ai_text}")
 
         # Revert OBS to idle when done talking
         try: eel.setNovaState('idle')()
         except: pass
 
-        return ai_text
+        # Return a success flag since the text was already streamed
+        return "STREAM_COMPLETE"
 
     except Exception as e:
         log_error(f"Error communicating with LM Studio: {e}")
