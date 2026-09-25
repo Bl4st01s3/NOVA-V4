@@ -16,7 +16,7 @@ from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
 # Setup centralized logging to file
-log_file = open('nova.log', 'a')
+log_file = open('nova.log', 'a', buffering=1)
 sys.stdout = log_file
 sys.stderr = log_file
 
@@ -40,8 +40,7 @@ client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
 
 # Default prompt in case the file gets deleted
 DEFAULT_SYSTEM_PROMPT = """You are NOVA, a highly advanced, personal AI assistant.
-You are concise, helpful, and speak with a futuristic, Jarvis-like tone.
-You must always reply in plain text. Do not use JSON, do not hallucinate tool calls, and do not format your output as a function call."""
+You are concise, helpful, and speak with a futuristic, Jarvis-like tone."""
 
 # Load system prompt from file so it's easily editable by the user
 def load_system_prompt():
@@ -142,9 +141,11 @@ def send_message_to_nova(user_text):
                     if not is_parsing_text and '{"text": "' in full_json_args:
                         is_parsing_text = True
                         # If the chunk brought the start quote and some text, extract the text part
-                        start_idx = arg_chunk.find('{"text": "')
+                        # Since full_json_args might have crossed the boundary in this chunk,
+                        # we extract from the entire string to ensure we don't miss anything.
+                        start_idx = full_json_args.find('{"text": "')
                         if start_idx != -1:
-                            token = arg_chunk[start_idx + 10:]
+                            token = full_json_args[start_idx + 10:]
                             if token:
                                 ai_text += token
                                 try: eel.streamAIToken(token)()
