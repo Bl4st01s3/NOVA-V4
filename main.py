@@ -264,6 +264,10 @@ def send_message_to_nova(user_text):
         conversation_history.append({"role": "assistant", "content": ai_text})
         print_and_log(f"NOVA: {ai_text}")
 
+        # Notify frontend JS that the stream is completely done
+        try: eel.streamAIComplete()()
+        except: pass
+
         # Revert OBS to idle when done talking
         try: eel.setNovaState('idle')()
         except: pass
