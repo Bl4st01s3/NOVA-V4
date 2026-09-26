@@ -179,8 +179,9 @@
                             </label>
                             <input type="range" id="audio-gate-slider" min="-100" max="0" step="1" value="-40" style="width: 100%; accent-color: var(--purple); cursor: pointer; margin-bottom: 15px;">
 
-                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <label class="cyber-checkbox-container">
                                 <input type="checkbox" id="audio-spectral-nr" checked>
+                                <span class="checkmark-hex"></span>
                                 <span>Enable Spectral Noise Reduction (Anti-Hiss)</span>
                             </label>
                         </div>
@@ -206,10 +207,16 @@
                             [ COPY URL ]
                         </button>
 
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; border-top: 1px solid rgba(0, 243, 255, 0.2); padding-top: 15px;">
-                            <input type="checkbox" id="streamer-mode-toggle">
-                            <span style="color: var(--text-main);"><strong>Enable Streamer Mode</strong> (Prevents AI from leaking private data)</span>
-                        </label>
+                        <div style="border-top: 1px solid rgba(0, 243, 255, 0.2); padding-top: 15px;">
+                            <label class="cyber-checkbox-container" style="margin-bottom: 5px;">
+                                <input type="checkbox" id="streamer-mode-toggle">
+                                <span class="checkmark-hex"></span>
+                                <span><strong>Enable Streamer Mode</strong> (Prevents AI from leaking private data)</span>
+                            </label>
+                            <p style="font-size: 11px; color: #888; margin-left: 30px; margin-top: 5px;">
+                                <em>Note: If NOVA detects OBS Studio is running, this toggle will be automatically controlled.</em>
+                            </p>
+                        </div>
                     </div>
 
                     <div class="settings-card">
