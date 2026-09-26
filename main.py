@@ -14,6 +14,7 @@ import scipy.signal as signal
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
+import psutil
 
 # Setup centralized logging to file
 log_file = open('nova.log', 'a', buffering=1)
@@ -81,12 +82,45 @@ conversation_history = [
 @eel.expose
 def set_streamer_mode(enabled):
     global streamer_mode_enabled
+    if streamer_mode_enabled == enabled:
+        return
+
     streamer_mode_enabled = enabled
     print_and_log(f"Streamer Mode set to: {enabled}")
+
+    # Notify frontend to sync the checkbox UI
+    try:
+        eel.sync_streamer_mode_ui(enabled)()
+    except:
+        pass
 
     # Reload the system prompt in the history to apply/remove the streamer mode prompt
     if len(conversation_history) > 0 and conversation_history[0].get("role") == "system":
         conversation_history[0]["content"] = load_system_prompt()
+
+
+def monitor_obs_process():
+    """Background thread to detect if OBS is running and auto-toggle Streamer Mode."""
+    obs_process_names = {"obs64.exe", "obs32.exe", "obs"}
+    while True:
+        try:
+            obs_running = False
+            for proc in psutil.process_iter(['name']):
+                if proc.info['name'] and proc.info['name'].lower() in obs_process_names:
+                    obs_running = True
+                    break
+
+            if obs_running and not streamer_mode_enabled:
+                print_and_log("[SYSTEM] OBS detected. Auto-enabling Streamer Mode.")
+                set_streamer_mode(True)
+            elif not obs_running and streamer_mode_enabled:
+                print_and_log("[SYSTEM] OBS closed. Auto-disabling Streamer Mode.")
+                set_streamer_mode(False)
+
+        except Exception as e:
+            log_error(f"OBS Monitor error: {e}")
+
+        time.sleep(5)
 
 @eel.expose
 def send_message_to_nova(user_text):
@@ -711,6 +745,9 @@ def run_presence_server():
 def start_app():
     # Start the webhook API in a daemon thread so it dies when the main app closes
     threading.Thread(target=run_presence_server, daemon=True).start()
+
+    # Start the OBS background monitor
+    threading.Thread(target=monitor_obs_process, daemon=True).start()
 
     # Initialize eel pointing to our 'web' folder
     eel.init('web')
