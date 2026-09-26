@@ -185,6 +185,10 @@ def send_message_to_nova(user_text):
         ai_text = ""
         full_json_args = ""
         is_parsing_text = False
+        import re
+        # Broad thesaurus pattern to catch any hallucinated keys for the speech text
+        text_key_pattern = re.compile(r'"(text|say|talk|message|response|dialogue|speech|output|reply|content)"\s*:\s*"', re.IGNORECASE)
+        last_processed_idx = 0
 
         # Iterate over the streamed chunks
         for chunk in response:
@@ -197,32 +201,34 @@ def send_message_to_nova(user_text):
                     arg_chunk = tc.function.arguments
                     full_json_args += arg_chunk
 
-                    # We only want to stream characters that belong to the "text" value.
-                    # As JSON builds, we watch for `{"text": "`
-                    # Once we hit the quote, we stream everything until the closing quote.
-                    # This is a naive but extremely fast real-time parser.
-                    if not is_parsing_text and '{"text": "' in full_json_args:
-                        is_parsing_text = True
-                        # If the chunk brought the start quote and some text, extract the text part
-                        # Since full_json_args might have crossed the boundary in this chunk,
-                        # we extract from the entire string to ensure we don't miss anything.
-                        start_idx = full_json_args.find('{"text": "')
-                        if start_idx != -1:
-                            token = full_json_args[start_idx + 10:]
-                            if token:
-                                ai_text += token
-                                try: eel.streamAIToken(token)()
-                                except Exception: pass
-                        continue
+                    if not is_parsing_text:
+                        match = text_key_pattern.search(full_json_args)
+                        if match:
+                            is_parsing_text = True
+                            last_processed_idx = match.end()
 
                     if is_parsing_text:
-                        # Check if this chunk contains the closing quote of the JSON string
-                        if '"' in arg_chunk:
-                            # Stream only up to the quote
-                            token = arg_chunk.split('"')[0]
+                        chunk_to_process = full_json_args[last_processed_idx:]
+
+                        # Look for unescaped quote to find the end of the string
+                        end_quote_idx = -1
+                        for i in range(len(chunk_to_process)):
+                            if chunk_to_process[i] == '"':
+                                # Check if escaped
+                                escapes = 0
+                                for j in range(i-1, -1, -1):
+                                    if chunk_to_process[j] == '\\': escapes += 1
+                                    else: break
+                                if escapes % 2 == 0:
+                                    end_quote_idx = i
+                                    break
+
+                        if end_quote_idx != -1:
+                            token = chunk_to_process[:end_quote_idx]
                             is_parsing_text = False
                         else:
-                            token = arg_chunk
+                            token = chunk_to_process
+                            last_processed_idx = len(full_json_args)
 
                         if token:
                             ai_text += token
@@ -243,7 +249,15 @@ def send_message_to_nova(user_text):
             # Try to safely parse the final JSON to ensure ai_text is perfectly clean
             try:
                 args = json.loads(full_json_args)
-                ai_text = args.get("text", ai_text)
+                # Check our thesaurus list for the parsed JSON dictionary
+                for possible_key in ["text", "say", "talk", "message", "response", "dialogue", "speech", "output", "reply", "content"]:
+                    for k, v in args.items():
+                        if k.lower() == possible_key:
+                            ai_text = v
+                            break
+                    else:
+                        continue
+                    break
             except json.JSONDecodeError:
                 pass
 
