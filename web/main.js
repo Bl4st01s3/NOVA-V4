@@ -34,21 +34,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const loadingId = appendLoading();
 
-        try {
-            // Prepare an empty bubble for the streaming response
-            removeMessage(loadingId);
-            activeStreamingContentDiv = createEmptyMessageBubble('assistant');
+        // Prepare an empty bubble for the streaming response
+        removeMessage(loadingId);
+        activeStreamingContentDiv = createEmptyMessageBubble('assistant');
 
-            // The python backend will now fire eel.streamAIToken multiple times before returning
-            await eel.send_message_to_nova(text)();
-
-            // Clear the active reference once done
-            activeStreamingContentDiv = null;
-        } catch (error) {
-            removeMessage(loadingId);
-            appendMessage('system', 'Error connecting to Bionic Engine: ' + error);
-            activeStreamingContentDiv = null;
-        }
+        // We do NOT await this call! If LM Studio takes 2 minutes to start generating,
+        // Eel's internal WebSocket promise will time out and crash the frontend connection.
+        // We fire and forget, and let Python push the tokens back to us async.
+        eel.send_message_to_nova(text)();
     }
 
     sendBtn.addEventListener('click', sendMessage);
@@ -502,6 +495,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
+    // Called by python when the stream is completely finished
+    window.streamAIComplete = function() {
+        activeStreamingContentDiv = null;
+    }
+
     function appendLoading() {
         const id = 'loading-' + Date.now();
         const messageDiv = document.createElement('div');
@@ -600,3 +598,4 @@ function syncStreamerModeUI(isEnabled) {
 }
 
 eel.expose(window.streamAIToken, "streamAIToken");
+eel.expose(window.streamAIComplete, "streamAIComplete");
