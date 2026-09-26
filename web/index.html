@@ -202,9 +202,14 @@
                             <label>Browser Source URL</label>
                             <input type="text" id="obs-url" class="cyber-input" readonly>
                         </div>
-                        <button class="cyber-btn" id="copy-obs-btn">
+                        <button class="cyber-btn" id="copy-obs-btn" style="margin-bottom: 15px;">
                             [ COPY URL ]
                         </button>
+
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; border-top: 1px solid rgba(0, 243, 255, 0.2); padding-top: 15px;">
+                            <input type="checkbox" id="streamer-mode-toggle">
+                            <span style="color: var(--text-main);"><strong>Enable Streamer Mode</strong> (Prevents AI from leaking private data)</span>
+                        </label>
                     </div>
 
                     <div class="settings-card">
