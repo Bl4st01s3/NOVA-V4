@@ -35,9 +35,14 @@ def print_and_log(message):
 def log_error(message):
     logging.error(message)
 
+import httpx
+
 # Initialize OpenAI client to connect to local LM Studio server
-# Bionic / LM Studio runs an OpenAI-compatible server typically on port 1234
-client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio")
+# Bionic / LM Studio runs an OpenAI-compatible server typically on port 1234.
+# We set a custom timeout: 5s to connect (fails fast if LM Studio is frozen/off),
+# but 300s to read (gives the LLM up to 5 minutes to generate the first token).
+http_timeout = httpx.Timeout(connect=5.0, read=300.0, write=5.0, pool=5.0)
+client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio", timeout=http_timeout)
 
 # Default prompt in case the file gets deleted
 DEFAULT_SYSTEM_PROMPT = """You are NOVA, a highly advanced, local AI embodiment engineered to serve as a personal systems operator and digital confidant.
@@ -151,9 +156,14 @@ def process_llm_response():
         models = client.models.list()
 
         if not models.data:
+            error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
+            try: eel.pushAIMessage(error_msg)()
+            except: pass
+            try: eel.streamAIComplete()()
+            except: pass
             try: eel.setNovaState('error')()
             except: pass
-            return "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
+            return "ERROR_NO_MODEL"
 
         # Select the ID of the first available model
         model_id = models.data[0].id
@@ -284,14 +294,22 @@ def process_llm_response():
         return "STREAM_COMPLETE"
 
     except Exception as e:
-        log_error(f"Error communicating with LM Studio: {e}")
-        eel.addActivityLog('system', f"API Error: {str(e)}")
+        error_msg = f"Error: Unable to reach the Bionic Engine. Please check that LM Studio is running and responding."
+        log_error(f"{error_msg} Details: {e}")
+
+        # We need to push the error visually to the UI chat window
+        # because this background thread no longer returns data directly to the user's JS promise
+        try: eel.pushAIMessage(error_msg)()
+        except: pass
+
+        try: eel.streamAIComplete()()
+        except: pass
 
         # Set OBS to error state
         try: eel.setNovaState('error')()
         except: pass
 
-        return f"System Error: Unable to connect to the Bionic Engine. Please ensure LM Studio server is running on localhost:1234. Details: {str(e)}"
+        return "ERROR_COMPLETE"
 
 # --- Presence Tracking API ---
 presence_state = {
