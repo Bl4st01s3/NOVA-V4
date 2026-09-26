@@ -309,20 +309,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
             availableTools.forEach(toolName => {
                 const label = document.createElement('label');
-                label.style.cssText = "display: flex; align-items: center; gap: 10px; cursor: pointer;";
+                label.className = "cyber-checkbox-container";
 
                 const checkbox = document.createElement('input');
                 checkbox.type = "checkbox";
                 checkbox.id = `brief-tool-${toolName}`;
 
+                const hexSpan = document.createElement('span');
+                hexSpan.className = "checkmark-hex";
+
                 // Capitalize first letter for display
                 const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
 
-                const span = document.createElement('span');
-                span.innerText = `Include ${displayName} Data`;
+                const textSpan = document.createElement('span');
+                textSpan.innerText = `Include ${displayName} Data`;
 
                 label.appendChild(checkbox);
-                label.appendChild(span);
+                label.appendChild(hexSpan);
+                label.appendChild(textSpan);
                 toolsContainer.appendChild(label);
 
                 // Load saved state or default to true
