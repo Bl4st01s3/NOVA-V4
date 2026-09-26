@@ -582,4 +582,17 @@ function addActivityLog(type, message) {
     // Auto scroll log to bottom
     logContainer.scrollTop = logContainer.scrollHeight;
 }
+eel.expose(syncStreamerModeUI, "sync_streamer_mode_ui");
+function syncStreamerModeUI(isEnabled) {
+    const streamerModeToggle = document.getElementById('streamer-mode-toggle');
+    if (streamerModeToggle) {
+        streamerModeToggle.checked = isEnabled;
+        localStorage.setItem('nova_streamer_mode', isEnabled);
+
+        // Add a visible notification log that the system state changed
+        const stateText = isEnabled ? "ENABLED (OBS Detected)" : "DISABLED (OBS Closed)";
+        addActivityLog('system', `Streamer Mode automatically ${stateText}.`);
+    }
+}
+
 eel.expose(window.streamAIToken, "streamAIToken");
