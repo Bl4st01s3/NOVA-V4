@@ -186,7 +186,8 @@ def send_message_to_nova(user_text):
         full_json_args = ""
         is_parsing_text = False
         import re
-        text_key_pattern = re.compile(r'"text"\s*:\s*"')
+        # Broad thesaurus pattern to catch any hallucinated keys for the speech text
+        text_key_pattern = re.compile(r'"(text|say|talk|message|response|dialogue|speech|output|reply|content)"\s*:\s*"', re.IGNORECASE)
         last_processed_idx = 0
 
         # Iterate over the streamed chunks
@@ -248,7 +249,15 @@ def send_message_to_nova(user_text):
             # Try to safely parse the final JSON to ensure ai_text is perfectly clean
             try:
                 args = json.loads(full_json_args)
-                ai_text = args.get("text", ai_text)
+                # Check our thesaurus list for the parsed JSON dictionary
+                for possible_key in ["text", "say", "talk", "message", "response", "dialogue", "speech", "output", "reply", "content"]:
+                    for k, v in args.items():
+                        if k.lower() == possible_key:
+                            ai_text = v
+                            break
+                    else:
+                        continue
+                    break
             except json.JSONDecodeError:
                 pass
 
