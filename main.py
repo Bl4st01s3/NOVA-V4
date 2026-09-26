@@ -126,17 +126,25 @@ def monitor_obs_process():
 def send_message_to_nova(user_text):
     """
     Called from JS when the user sends a message.
+    Spawns a background task to prevent Eel WebSocket timeouts during TTFT latency.
     """
     print_and_log(f"User: {user_text}")
 
+    # Append user message to history immediately so the UI is in sync
+    conversation_history.append({"role": "user", "content": user_text})
+
+    # Spawn the heavy LLM lifting into a background greenlet thread
+    eel.spawn(process_llm_response)
+
+def process_llm_response():
+    """
+    Background worker that handles the LLM generation and streaming.
+    """
     # Notify OBS Overlay that we are processing/talking
     try:
         eel.setNovaState('talking')()
     except Exception as e:
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
-
-    # Append user message to history
-    conversation_history.append({"role": "user", "content": user_text})
 
     try:
         # Fetch available models to auto-select the loaded one
