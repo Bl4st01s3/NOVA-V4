@@ -1,3 +1,7 @@
+# Gevent monkey-patching MUST be the first thing imported and executed
+from gevent import monkey
+monkey.patch_all()
+
 import eel
 import sys
 from openai import OpenAI
@@ -133,18 +137,21 @@ def send_message_to_nova(user_text):
     Called from JS when the user sends a message.
     Spawns a background task to prevent Eel WebSocket timeouts during TTFT latency.
     """
-    print_and_log(f"User: {user_text}")
+    print_and_log(f"[PIPELINE_1] send_message_to_nova invoked with user_text: {user_text}")
 
     # Append user message to history immediately so the UI is in sync
     conversation_history.append({"role": "user", "content": user_text})
 
     # Spawn the heavy LLM lifting into a background greenlet thread
+    print_and_log(f"[PIPELINE_2] Spawning background thread via eel.spawn...")
     eel.spawn(process_llm_response)
+    print_and_log(f"[PIPELINE_3] eel.spawn returned control to Javascript successfully.")
 
 def process_llm_response():
     """
     Background worker that handles the LLM generation and streaming.
     """
+    print_and_log(f"[PIPELINE_4] process_llm_response worker thread started execution.")
     try:
         _process_llm_response_inner()
     except Exception as e:
@@ -157,8 +164,10 @@ def process_llm_response():
         except: pass
         try: eel.setNovaState('error')()
         except: pass
+    print_and_log(f"[PIPELINE_9] process_llm_response worker thread finished execution.")
 
 def _process_llm_response_inner():
+    print_and_log(f"[PIPELINE_5] _process_llm_response_inner started.")
     # Notify OBS Overlay that we are processing/talking
     try:
         eel.setNovaState('talking')()
@@ -166,8 +175,10 @@ def _process_llm_response_inner():
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     try:
+        print_and_log(f"[PIPELINE_6] Attempting to contact Bionic Engine (LM Studio) via client.models.list()...")
         # Fetch available models to auto-select the loaded one
         models = client.models.list()
+        print_and_log(f"[PIPELINE_7] Bionic Engine replied to models.list().")
 
         if not models.data:
             error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
@@ -303,6 +314,8 @@ def _process_llm_response_inner():
         # Revert OBS to idle when done talking
         try: eel.setNovaState('idle')()
         except: pass
+
+        print_and_log(f"[PIPELINE_8] Stream fully completed.")
 
         # Return a success flag since the text was already streamed
         return "STREAM_COMPLETE"
@@ -811,6 +824,28 @@ def start_app():
     eel.init('web')
 
     print_and_log("NOVA UI Initialized. Launching window...")
+
+    # Start a background health check to verify the LM Studio connection
+    def health_check():
+        time.sleep(2) # Give the UI a moment to load
+        try:
+            print_and_log("[SYSTEM] Pinging Bionic Engine...")
+            # If this succeeds, it means LM studio is responding
+            models = client.models.list()
+            if models.data:
+                try: eel.setSystemStatus('online', 'Bionic Engine Online')()
+                except: pass
+                print_and_log("[SYSTEM] Bionic Engine Online.")
+            else:
+                try: eel.setSystemStatus('error', 'No Model Loaded')()
+                except: pass
+                print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded.")
+        except Exception as e:
+            try: eel.setSystemStatus('error', 'Bionic Engine Offline')()
+            except: pass
+            print_and_log(f"[SYSTEM] Bionic Engine Offline or Unreachable: {e}")
+
+    threading.Thread(target=health_check, daemon=True).start()
 
     # Start the app. You can tweak geometry here.
     # port=0 forces the OS to pick a random available port, preventing 'Address already in use' errors.
