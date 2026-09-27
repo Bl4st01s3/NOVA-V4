@@ -41,7 +41,11 @@ document.addEventListener("DOMContentLoaded", () => {
         // We do NOT await this call! If LM Studio takes 2 minutes to start generating,
         // Eel's internal WebSocket promise will time out and crash the frontend connection.
         // We fire and forget, and let Python push the tokens back to us async.
-        eel.send_message_to_nova(text)();
+        eel.send_message_to_nova(text)(); catch (error) {
+            removeMessage(loadingId);
+            appendMessage('system', 'Error connecting to Bionic Engine: ' + error);
+            activeStreamingContentDiv = null;
+        }
     }
 
     sendBtn.addEventListener('click', sendMessage);
