@@ -145,6 +145,20 @@ def process_llm_response():
     """
     Background worker that handles the LLM generation and streaming.
     """
+    try:
+        _process_llm_response_inner()
+    except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        log_error(f"CRITICAL ERROR in background thread: {error_trace}")
+        try: eel.pushAIMessage(f"System Error: A critical failure occurred in the background thread. Check nova.log for details.")()
+        except: pass
+        try: eel.streamAIComplete()()
+        except: pass
+        try: eel.setNovaState('error')()
+        except: pass
+
+def _process_llm_response_inner():
     # Notify OBS Overlay that we are processing/talking
     try:
         eel.setNovaState('talking')()
