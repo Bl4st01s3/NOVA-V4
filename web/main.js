@@ -599,3 +599,30 @@ function syncStreamerModeUI(isEnabled) {
 
 eel.expose(window.streamAIToken, "streamAIToken");
 eel.expose(window.streamAIComplete, "streamAIComplete");
+
+eel.expose(setSystemStatus);
+function setSystemStatus(state, msg) {
+    const statusText = document.getElementById('system-status-text');
+    const statusDot = document.getElementById('system-status-dot');
+    if (!statusText || !statusDot) return;
+
+    statusText.innerText = msg;
+
+    if (state === 'online') {
+        statusText.style.color = 'var(--cyan)';
+        statusDot.style.backgroundColor = 'var(--cyan)';
+        statusDot.style.boxShadow = '0 0 10px var(--cyan)';
+        statusDot.style.animation = 'blink 2s infinite';
+    } else if (state === 'error') {
+        statusText.style.color = 'red';
+        statusDot.style.backgroundColor = 'red';
+        statusDot.style.boxShadow = '0 0 10px red';
+        statusDot.style.animation = 'none'; // Solid red for error
+    } else {
+        // Checking or idle
+        statusText.style.color = '#888';
+        statusDot.style.backgroundColor = '#888';
+        statusDot.style.boxShadow = 'none';
+        statusDot.style.animation = 'blink 1s infinite';
+    }
+}
