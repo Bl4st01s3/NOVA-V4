@@ -473,7 +473,12 @@ def apply_dsp_effects(audio_data, sample_rate, effect_type):
         impulse = np.exp(-15 * t) * np.random.randn(ir_length)
 
         # Convolve
-        reverb = signal.fftconvolve(mixed, impulse, mode='full')[:len(mixed)]
+        if len(mixed.shape) > 1:
+            # If the audio is stereo (2D), we must make the impulse 2D as well
+            impulse = impulse[:, np.newaxis]
+            reverb = signal.fftconvolve(mixed, impulse, mode='full', axes=0)[:len(mixed)]
+        else:
+            reverb = signal.fftconvolve(mixed, impulse, mode='full')[:len(mixed)]
 
         # Mix reverb back in lightly
         final_audio = (mixed * 0.8) + (reverb * 0.1)
