@@ -216,116 +216,27 @@ def _process_llm_response_inner():
         model_id = models.data[0].id
         print_and_log(f"Using model: {model_id}")
 
-        # Define the tools available to NOVA
-        tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "speak",
-                    "description": "Formulate a response to the user and speak it out loud.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "text": {
-                                "type": "string",
-                                "description": "The response text to speak to the user."
-                            }
-                        },
-                        "required": ["text"]
-                    }
-                }
-            }
-        ]
-
-        # Call the local LM Studio server with streaming AND tools enabled
+        # Call the local LM Studio server with pure text streaming (No JSON formatting required!)
         response = client.chat.completions.create(
             model=model_id,
             messages=conversation_history,
             temperature=0.7,
-            tools=tools,
-            tool_choice="auto",
             stream=True
         )
 
         ai_text = ""
-        full_json_args = ""
-        is_parsing_text = False
-        import re
-        # Broad thesaurus pattern to catch any hallucinated keys for the speech text
-        text_key_pattern = re.compile(r'"(text|say|talk|message|response|dialogue|speech|output|reply|content)"\s*:\s*"', re.IGNORECASE)
-        last_processed_idx = 0
 
         # Iterate over the streamed chunks
         for chunk in response:
             delta = chunk.choices[0].delta
 
-            # 1. Handle Tool Call Streaming (Llama outputting JSON)
-            if delta.tool_calls:
-                tc = delta.tool_calls[0]
-                if tc.function and tc.function.arguments:
-                    arg_chunk = tc.function.arguments
-                    full_json_args += arg_chunk
-
-                    if not is_parsing_text:
-                        match = text_key_pattern.search(full_json_args)
-                        if match:
-                            is_parsing_text = True
-                            last_processed_idx = match.end()
-
-                    if is_parsing_text:
-                        chunk_to_process = full_json_args[last_processed_idx:]
-
-                        # Look for unescaped quote to find the end of the string
-                        end_quote_idx = -1
-                        for i in range(len(chunk_to_process)):
-                            if chunk_to_process[i] == '"':
-                                # Check if escaped
-                                escapes = 0
-                                for j in range(i-1, -1, -1):
-                                    if chunk_to_process[j] == '\\': escapes += 1
-                                    else: break
-                                if escapes % 2 == 0:
-                                    end_quote_idx = i
-                                    break
-
-                        if end_quote_idx != -1:
-                            token = chunk_to_process[:end_quote_idx]
-                            is_parsing_text = False
-                        else:
-                            token = chunk_to_process
-                            last_processed_idx = len(full_json_args)
-
-                        if token:
-                            ai_text += token
-                            token_queue.put(token)
-
-
-            # 2. Handle Standard Content Streaming (Fallback if it ignores tools)
-            elif delta.content is not None:
+            # Handle Standard Content Streaming
+            if delta.content is not None:
                 token = delta.content
                 ai_text += token
                 token_queue.put(token)
 
-
         # Finished generating.
-        if full_json_args:
-            print_and_log(f"NOVA RAW JSON: {full_json_args}")
-            eel.addActivityLog('tool', f"LLM called 'speak' tool. Raw JSON logged.")
-            # Try to safely parse the final JSON to ensure ai_text is perfectly clean
-            try:
-                args = json.loads(full_json_args)
-                # Check our thesaurus list for the parsed JSON dictionary
-                for possible_key in ["text", "say", "talk", "message", "response", "dialogue", "speech", "output", "reply", "content"]:
-                    for k, v in args.items():
-                        if k.lower() == possible_key:
-                            ai_text = v
-                            break
-                    else:
-                        continue
-                    break
-            except json.JSONDecodeError:
-                pass
-
         conversation_history.append({"role": "assistant", "content": ai_text})
         print_and_log(f"NOVA: {ai_text}")
 
