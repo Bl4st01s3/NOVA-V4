@@ -64,6 +64,23 @@ def log_error(message):
     logging.error(message)
 
 import httpx
+import re
+
+def clean_text_for_speech(text):
+    """
+    Cleans up raw text, specifically formatting JSON/markdown so it sounds good
+    when read aloud by the pyttsx3 engine.
+    """
+    # Replace underscores with spaces so the TTS engine doesn't explicitly say "underscore"
+    text = text.replace('_', ' ')
+    # Remove raw json brackets and formatting
+    text = text.replace('{', '')
+    text = text.replace('}', '')
+    text = text.replace('"', '')
+    # Remove markdown code blocks
+    text = re.sub(r'```[a-zA-Z]*\n', '', text)
+    text = re.sub(r'```', '', text)
+    return text.strip()
 
 # Initialize OpenAI client to connect to local LM Studio server
 # Bionic / LM Studio runs an OpenAI-compatible server typically on port 1234.
@@ -208,6 +225,42 @@ def process_llm_response():
         try: eel.setNovaState('error')
         except: pass
 
+def build_tools_array():
+    """Builds the tools array for the LLM based on available tools."""
+    tools_array = []
+    available_tools = get_available_tools()
+
+    # We will hardcode schemas for now, but in the future, these could be loaded from config.json inside each tool
+    for t in available_tools:
+        if t == "weather":
+            tools_array.append({
+                "type": "function",
+                "function": {
+                    "name": "weather",
+                    "description": "Get the current local weather.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            })
+        elif t == "octoprint":
+            tools_array.append({
+                "type": "function",
+                "function": {
+                    "name": "octoprint",
+                    "description": "Get the status of the 3D printer.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            })
+        # Add other tools here...
+    return tools_array
+
 def _process_llm_response_inner():
     # Notify OBS Overlay that we are processing/talking
     try:
@@ -232,41 +285,9 @@ def _process_llm_response_inner():
         model_id = models.data[0].id
         print_and_log(f"Using model: {model_id}")
 
-        # Dynamically build the tools array based on what's available in the tools/ directory
-        tools_array = []
-        available_tools = get_available_tools()
+        tools_array = build_tools_array()
 
-        # We will hardcode schemas for now, but in the future, these could be loaded from config.json inside each tool
-        for t in available_tools:
-            if t == "weather":
-                tools_array.append({
-                    "type": "function",
-                    "function": {
-                        "name": "weather",
-                        "description": "Get the current local weather.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    }
-                })
-            elif t == "octoprint":
-                tools_array.append({
-                    "type": "function",
-                    "function": {
-                        "name": "octoprint",
-                        "description": "Get the status of the 3D printer.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {},
-                            "required": []
-                        }
-                    }
-                })
-            # Add other tools here...
-
-        # Build the payload arguments. If tools exist, add them.
+        # Build the payload arguments.
         kwargs = {
             "model": model_id,
             "messages": conversation_history,
@@ -274,14 +295,15 @@ def _process_llm_response_inner():
             "stream": True
         }
 
-        # Check if the current prompt is the boot sequence
-        is_boot_sequence = False
-        if len(conversation_history) > 0 and "The system has just successfully booted up." in str(conversation_history[-1].get("content", "")):
-            is_boot_sequence = True
-
-        if tools_array and not is_boot_sequence:
+        # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
+        if tools_array:
             kwargs["tools"] = tools_array
             kwargs["tool_choice"] = "auto"
+
+            # Check if the current prompt is the boot sequence, where we specifically don't want it using tools
+            if len(conversation_history) > 0 and "The system has just successfully booted up." in str(conversation_history[-1].get("content", "")):
+                # Instead of dropping tools (which busts the cache), we explicitly disable them for this turn
+                kwargs["tool_choice"] = "none"
 
         # Call the local LM Studio server
         response = client.chat.completions.create(**kwargs)
@@ -321,7 +343,10 @@ def _process_llm_response_inner():
                         # Add the stripped punctuation back to the sentence
                         sentence_to_speak = parts[0] + punc.strip()
                         if sentence_to_speak.strip():
-                            tts_queue.put(sentence_to_speak.strip())
+                            # Clean the text (remove underscores, json brackets, markdown) before speaking
+                            clean_speech = clean_text_for_speech(sentence_to_speak)
+                            if clean_speech:
+                                tts_queue.put(clean_speech)
                         # Keep whatever token fragment came after the punctuation for the next sentence
                         sentence_buffer = parts[1]
                         break
@@ -367,13 +392,18 @@ def _process_llm_response_inner():
             })
 
             # Recurse: Call the LLM again with the new history to get the final answer!
-            # We explicitly drop the tools array so it doesn't loop infinitely.
-            response2 = client.chat.completions.create(
-                model=model_id,
-                messages=conversation_history,
-                temperature=0.7,
-                stream=True
-            )
+            kwargs2 = {
+                "model": model_id,
+                "messages": conversation_history,
+                "temperature": 0.7,
+                "stream": True
+            }
+            # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
+            if tools_array:
+                kwargs2["tools"] = tools_array
+                kwargs2["tool_choice"] = "none" # Disable tool use on the recurse so it doesn't loop infinitely
+
+            response2 = client.chat.completions.create(**kwargs2)
 
             for chunk in response2:
                 delta = chunk.choices[0].delta
@@ -390,14 +420,18 @@ def _process_llm_response_inner():
                             parts = sentence_buffer.split(punc, 1)
                             sentence_to_speak = parts[0] + punc.strip()
                             if sentence_to_speak.strip():
-                                tts_queue.put(sentence_to_speak.strip())
+                                clean_speech = clean_text_for_speech(sentence_to_speak)
+                                if clean_speech:
+                                    tts_queue.put(clean_speech)
                             sentence_buffer = parts[1]
                             break
 
         # Final append
         # Flush any remaining text in the buffer to the TTS engine
         if sentence_buffer.strip():
-            tts_queue.put(sentence_buffer.strip())
+            clean_speech = clean_text_for_speech(sentence_buffer)
+            if clean_speech:
+                tts_queue.put(clean_speech)
 
         # Strip trailing quotes if the LLM outputted them at the end
         if ai_text.endswith('"'):
@@ -952,22 +986,27 @@ def generate_presence_message(event_type):
         if not models.data: return
         model_id = models.data[0].id
 
-        # We don't want this in the main conversation history to pollute it,
-        # so we send a one-off request.
-        temp_history = [
-            {"role": "system", "content": load_system_prompt()},
-            {"role": "user", "content": prompt}
-        ]
+        # We append directly to the main conversation history to leverage the existing KV Cache.
+        # Sending a one-off temp_history array causes the LLM engine to completely wipe the KV Cache
+        # and re-evaluate the entire prompt from scratch, taking minutes to respond.
+        conversation_history.append({"role": "user", "content": prompt})
 
         # Trigger UI to show talking state in OBS
         try: eel.setNovaState('talking')
         except: pass
 
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=temp_history,
-            temperature=0.8
-        )
+        tools_array = build_tools_array()
+        kwargs = {
+            "model": model_id,
+            "messages": conversation_history,
+            "temperature": 0.8
+        }
+        # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
+        if tools_array:
+            kwargs["tools"] = tools_array
+            kwargs["tool_choice"] = "none" # Do not let it use tools for presence greetings
+
+        response = client.chat.completions.create(**kwargs)
 
         ai_text = response.choices[0].message.content
         print_and_log(f"NOVA (Presence): {ai_text}")
