@@ -43,6 +43,37 @@ document.addEventListener("DOMContentLoaded", () => {
         // We fire and forget, and let Python push the tokens back to us async.
         try {
             eel.send_message_to_nova(text)();
+
+            // Start polling the local HTTP queue for tokens
+            const pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch('http://127.0.0.1:54321/stream');
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.tokens && data.tokens.length > 0) {
+                            for (let token of data.tokens) {
+                                if (token === '[DONE]') {
+                                    clearInterval(pollInterval);
+                                    window.activeStreamingContentDiv = null;
+                                    return;
+                                }
+
+                                if (window.activeStreamingContentDiv) {
+                                    const textNode = document.createTextNode(token);
+                                    window.activeStreamingContentDiv.appendChild(textNode);
+                                    if (token.includes('\n')) {
+                                        window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                                    }
+                                    window.scrollToBottom();
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log("Polling error:", e);
+                }
+            }, 100);
+
         } catch (error) {
             removeMessage(loadingId);
             appendMessage('system', 'Error connecting to Bionic Engine: ' + error);

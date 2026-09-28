@@ -28,6 +28,10 @@ import os
 import threading
 import json
 import time
+import queue
+
+# Queue to hold text tokens to bypass Eel WebSockets
+token_queue = queue.Queue()
 import logging
 import subprocess
 import sounddevice as sd
@@ -176,8 +180,7 @@ def process_llm_response():
         log_error(f"CRITICAL ERROR in background thread: {error_trace}")
         try: eel.pushAIMessage(f"System Error: A critical failure occurred in the background thread. Check nova.log for details.")()
         except: pass
-        try: eel.streamAIComplete()()
-        except: pass
+        token_queue.put('[DONE]')
         try: eel.setNovaState('error')()
         except: pass
 
@@ -196,8 +199,7 @@ def _process_llm_response_inner():
             error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
             try: eel.pushAIMessage(error_msg)()
             except: pass
-            try: eel.streamAIComplete()()
-            except: pass
+            token_queue.put('[DONE]')
             try: eel.setNovaState('error')()
             except: pass
             return "ERROR_NO_MODEL"
@@ -287,15 +289,15 @@ def _process_llm_response_inner():
 
                         if token:
                             ai_text += token
-                            try: eel.streamAIToken(token)()
-                            except Exception: pass
+                            token_queue.put(token)
+
 
             # 2. Handle Standard Content Streaming (Fallback if it ignores tools)
             elif delta.content is not None:
                 token = delta.content
                 ai_text += token
-                try: eel.streamAIToken(token)()
-                except Exception: pass
+                token_queue.put(token)
+
 
         # Finished generating.
         if full_json_args:
@@ -320,8 +322,7 @@ def _process_llm_response_inner():
         print_and_log(f"NOVA: {ai_text}")
 
         # Notify frontend JS that the stream is completely done
-        try: eel.streamAIComplete()()
-        except: pass
+        token_queue.put('[DONE]')
 
         # Revert OBS to idle when done talking
         try: eel.setNovaState('idle')()
@@ -339,8 +340,7 @@ def _process_llm_response_inner():
         try: eel.pushAIMessage(error_msg)()
         except: pass
 
-        try: eel.streamAIComplete()()
-        except: pass
+        token_queue.put('[DONE]')
 
         # Set OBS to error state
         try: eel.setNovaState('error')()
@@ -738,6 +738,13 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(message).encode('utf-8'))
 
     def do_GET(self):
+        if self.path == '/stream':
+            tokens = []
+            while not token_queue.empty():
+                tokens.append(token_queue.get())
+            self._send_response(200, {"tokens": tokens})
+            return
+
         if self.path == '/obs':
             global dynamic_ui_port
             if dynamic_ui_port:
