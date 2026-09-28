@@ -519,17 +519,16 @@ def tts_worker():
     except ImportError:
         pass # Not on Windows or pythoncom not installed
 
-    # Initialize engine IN the worker thread
-    tts_engine = pyttsx3.init()
-
-    # Cache voices for the UI
+    # Fetch voices once initially to populate the UI cache
     try:
-        voices = tts_engine.getProperty('voices')
+        temp_engine = pyttsx3.init()
+        voices = temp_engine.getProperty('voices')
         for voice in voices:
             cached_voices.append({
                 "id": voice.id,
                 "name": voice.name
             })
+        del temp_engine
     except Exception as e:
         log_error(f"Failed to fetch TTS voices inside worker: {e}")
 
@@ -537,6 +536,8 @@ def tts_worker():
     temp_dir = "temp_audio"
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
+
+    current_worker_voice = None
 
     while True:
         task = tts_queue.get()
@@ -546,11 +547,8 @@ def tts_worker():
         # We can either receive a raw string (to speak) or a dict (for commands)
         if isinstance(task, dict):
             if task.get("type") == "set_voice":
-                try:
-                    tts_engine.setProperty('voice', task["voice_id"])
-                    print_and_log(f"Worker changed TTS Voice to: {task['voice_id']}")
-                except Exception as e:
-                    log_error(f"Failed to change voice inside worker: {e}")
+                current_worker_voice = task["voice_id"]
+                print_and_log(f"Worker cached TTS Voice preference: {current_worker_voice}")
             continue
 
         # Otherwise it's text to speak
@@ -558,7 +556,14 @@ def tts_worker():
         tts_active = True
         temp_file = os.path.join(temp_dir, "speech.wav")
         print_and_log(f"[TTS WORKER] Picked up text from queue: {text}")
+
+        # Initialize a completely fresh engine per sentence to avoid COM memory deadlocks
+        tts_engine = None
         try:
+            tts_engine = pyttsx3.init()
+            if current_worker_voice:
+                tts_engine.setProperty('voice', current_worker_voice)
+
             # Intercept TTS output to file
             print_and_log(f"[TTS WORKER] Saving raw TTS to: {temp_file}")
             tts_engine.save_to_file(text, temp_file)
@@ -586,6 +591,10 @@ def tts_worker():
             error_trace = traceback.format_exc()
             log_error(f"[TTS WORKER] CRITICAL ERROR: {error_trace}")
         finally:
+            # Must forcibly delete the COM instance of the engine to allow the next loop to live
+            if tts_engine:
+                del tts_engine
+
             # Cleanup temp file
             if os.path.exists(temp_file):
                 try:
