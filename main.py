@@ -315,9 +315,16 @@ def _process_llm_response_inner():
                 token_queue.put(token)
 
                 # Check for sentence completion (punctuation followed by a space or newline) to feed the TTS engine
-                if any(punc in sentence_buffer for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']):
-                    tts_queue.put(sentence_buffer.strip())
-                    sentence_buffer = ""
+                for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                    if punc in sentence_buffer:
+                        parts = sentence_buffer.split(punc, 1)
+                        # Add the stripped punctuation back to the sentence
+                        sentence_to_speak = parts[0] + punc.strip()
+                        if sentence_to_speak.strip():
+                            tts_queue.put(sentence_to_speak.strip())
+                        # Keep whatever token fragment came after the punctuation for the next sentence
+                        sentence_buffer = parts[1]
+                        break
 
         # Finished generating.
         if tool_name:
@@ -378,9 +385,14 @@ def _process_llm_response_inner():
                     sentence_buffer += token
                     token_queue.put(token)
 
-                    if any(punc in sentence_buffer for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']):
-                        tts_queue.put(sentence_buffer.strip())
-                        sentence_buffer = ""
+                    for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                        if punc in sentence_buffer:
+                            parts = sentence_buffer.split(punc, 1)
+                            sentence_to_speak = parts[0] + punc.strip()
+                            if sentence_to_speak.strip():
+                                tts_queue.put(sentence_to_speak.strip())
+                            sentence_buffer = parts[1]
+                            break
 
         # Final append
         # Flush any remaining text in the buffer to the TTS engine
