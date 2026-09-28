@@ -162,6 +162,21 @@ def send_message_to_nova(user_text):
     """
     if user_text == "[SYSTEM_BOOT_SEQUENCE]":
         print_and_log("[SYSTEM] Intercepted boot sequence trigger.")
+
+        # Strip all lingering JSON formatting from past AI messages in history
+        import json
+        for msg in conversation_history:
+            if msg["role"] == "assistant":
+                try:
+                    data = json.loads(msg["content"])
+                    # If it parses as JSON, extract the text and overwrite it
+                    for possible_key in ["text", "say", "talk", "message", "response", "dialogue", "speech", "output", "reply", "content"]:
+                        if possible_key in data:
+                            msg["content"] = data[possible_key]
+                            break
+                except Exception:
+                    pass
+
         # Craft a special hidden prompt that forces the LLM to introduce itself
         # without showing the user prompt in the UI chat history block.
         now = datetime.now()
