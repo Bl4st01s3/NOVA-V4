@@ -5,6 +5,25 @@ monkey.patch_all()
 import eel
 import sys
 from openai import OpenAI
+
+# ---------------------------------------------------------
+# Nuclear Monkeypatch for Eel's broken WebSocket callbacks
+# ---------------------------------------------------------
+_original_process_message = eel._process_message
+
+def _safe_process_message(message, ws):
+    try:
+        _original_process_message(message, ws)
+    except KeyError as e:
+        if str(e) == "'value'":
+            # Eel throws this when JS callbacks return an error state without a value payload.
+            # We explicitly ignore it so geventwebsocket doesn't crash the greenlet thread.
+            pass
+        else:
+            raise e
+
+eel._process_message = _safe_process_message
+# ---------------------------------------------------------
 import os
 import threading
 import json
