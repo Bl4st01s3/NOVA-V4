@@ -273,7 +273,12 @@ def _process_llm_response_inner():
             "stream": True
         }
 
-        if tools_array:
+        # Check if the current prompt is the boot sequence
+        is_boot_sequence = False
+        if len(conversation_history) > 0 and "The system has just successfully booted up." in str(conversation_history[-1].get("content", "")):
+            is_boot_sequence = True
+
+        if tools_array and not is_boot_sequence:
             kwargs["tools"] = tools_array
             kwargs["tool_choice"] = "auto"
 
