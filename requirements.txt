@@ -6,3 +6,4 @@ sounddevice==0.4.6
 numpy
 scipy
 psutil
+pyttsx3

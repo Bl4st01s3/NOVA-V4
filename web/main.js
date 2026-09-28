@@ -480,9 +480,57 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+
+    async function loadTTSVoices() {
+        const voiceSelect = document.getElementById('tts-voice-select');
+        try {
+            const voices = await eel.get_tts_voices()();
+            voiceSelect.innerHTML = '';
+
+            if (voices.length === 0) {
+                voiceSelect.innerHTML = '<option value="">No voices found</option>';
+                return;
+            }
+
+            voices.forEach(voice => {
+                const opt = document.createElement('option');
+                opt.value = voice.id;
+                opt.innerText = voice.name;
+                voiceSelect.appendChild(opt);
+            });
+
+            const savedVoice = localStorage.getItem('nova_tts_voice');
+            if (savedVoice !== null) {
+                voiceSelect.value = savedVoice;
+                eel.set_tts_voice(savedVoice)();
+            } else {
+                // If no voice saved, try to auto-select a female British one if possible
+                let bestMatch = voices[0].id;
+                for (let v of voices) {
+                    if (v.name.toLowerCase().includes('hazel') || v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('uk') || v.name.toLowerCase().includes('british')) {
+                        bestMatch = v.id;
+                        break;
+                    }
+                }
+                voiceSelect.value = bestMatch;
+                eel.set_tts_voice(bestMatch)();
+            }
+
+            voiceSelect.addEventListener('change', () => {
+                localStorage.setItem('nova_tts_voice', voiceSelect.value);
+                eel.set_tts_voice(voiceSelect.value)();
+            });
+
+        } catch(e) {
+            console.error("Failed to load TTS voices", e);
+            voiceSelect.innerHTML = '<option value="">Error loading voices</option>';
+        }
+    }
+
     setTimeout(() => {
         loadAudioDevices();
         initAudioFilters();
+        loadTTSVoices();
     }, 500);
 
     // Helper functions for Chat
