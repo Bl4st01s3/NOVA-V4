@@ -231,27 +231,135 @@ def _process_llm_response_inner():
         model_id = models.data[0].id
         print_and_log(f"Using model: {model_id}")
 
-        # Call the local LM Studio server with pure text streaming (No JSON formatting required!)
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=conversation_history,
-            temperature=0.7,
-            stream=True
-        )
+        # Dynamically build the tools array based on what's available in the tools/ directory
+        tools_array = []
+        available_tools = get_available_tools()
+
+        # We will hardcode schemas for now, but in the future, these could be loaded from config.json inside each tool
+        for t in available_tools:
+            if t == "weather":
+                tools_array.append({
+                    "type": "function",
+                    "function": {
+                        "name": "weather",
+                        "description": "Get the current local weather.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    }
+                })
+            elif t == "octoprint":
+                tools_array.append({
+                    "type": "function",
+                    "function": {
+                        "name": "octoprint",
+                        "description": "Get the status of the 3D printer.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
+                    }
+                })
+            # Add other tools here...
+
+        # Build the payload arguments. If tools exist, add them.
+        kwargs = {
+            "model": model_id,
+            "messages": conversation_history,
+            "temperature": 0.7,
+            "stream": True
+        }
+
+        if tools_array:
+            kwargs["tools"] = tools_array
+            kwargs["tool_choice"] = "auto"
+
+        # Call the local LM Studio server
+        response = client.chat.completions.create(**kwargs)
 
         ai_text = ""
+        tool_name = None
+        tool_args_str = ""
 
         # Iterate over the streamed chunks
         for chunk in response:
             delta = chunk.choices[0].delta
 
+            # Handle Tool Calls
+            if delta.tool_calls:
+                tc = delta.tool_calls[0]
+                if tc.function:
+                    if tc.function.name:
+                        tool_name = tc.function.name
+                    if tc.function.arguments:
+                        tool_args_str += tc.function.arguments
+
             # Handle Standard Content Streaming
-            if delta.content is not None:
+            elif delta.content is not None:
                 token = delta.content
                 ai_text += token
                 token_queue.put(token)
 
         # Finished generating.
+        if tool_name:
+            print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
+            try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}")()
+            except: pass
+
+            # Here we would actually EXECUTE the tool and send the result BACK to the LLM to summarize
+            # For now, let's just log it and append a mock response.
+            import subprocess
+            script_path = os.path.join("tools", tool_name, "main.py")
+            if os.path.exists(script_path):
+                python_exe = sys.executable.replace("pythonw.exe", "python.exe")
+                result = subprocess.run([python_exe, script_path], capture_output=True, text=True)
+                tool_output = result.stdout.strip()
+            else:
+                tool_output = f"Error: Tool {tool_name} not found."
+
+            print_and_log(f"[SYSTEM] Tool result: {tool_output}")
+
+            # We must append the tool call to history, then append the tool response to history,
+            # and then call the LLM AGAIN to generate the final text based on the tool data.
+            # This is standard OpenAI tool calling flow.
+
+            conversation_history.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{
+                    "id": "call_123",
+                    "type": "function",
+                    "function": {"name": tool_name, "arguments": tool_args_str}
+                }]
+            })
+
+            conversation_history.append({
+                "role": "tool",
+                "tool_call_id": "call_123",
+                "name": tool_name,
+                "content": tool_output
+            })
+
+            # Recurse: Call the LLM again with the new history to get the final answer!
+            # We explicitly drop the tools array so it doesn't loop infinitely.
+            response2 = client.chat.completions.create(
+                model=model_id,
+                messages=conversation_history,
+                temperature=0.7,
+                stream=True
+            )
+
+            for chunk in response2:
+                delta = chunk.choices[0].delta
+                if delta.content is not None:
+                    token = delta.content
+                    ai_text += token
+                    token_queue.put(token)
+
+        # Final append
         conversation_history.append({"role": "assistant", "content": ai_text})
         print_and_log(f"NOVA: {ai_text}")
 
