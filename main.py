@@ -423,36 +423,24 @@ def _process_llm_response_inner():
 # --- Text-To-Speech (TTS) Engine ---
 tts_queue = queue.Queue()
 tts_active = False
-tts_engine = pyttsx3.init()
+
+# Since UI queries happen asynchronously on main thread but engine is in worker thread,
+# we cache voices here so the UI can quickly pull them without blocking.
+cached_voices = []
 
 @eel.expose
 def get_tts_voices():
     """Returns a list of installed system TTS voices for the UI dropdown."""
-    try:
-        voices = tts_engine.getProperty('voices')
-        voice_list = []
-        for voice in voices:
-            # SAPI5 voice IDs are very long, so we create a clean dict to return to JS
-            voice_list.append({
-                "id": voice.id,
-                "name": voice.name
-            })
-        return voice_list
-    except Exception as e:
-        log_error(f"Failed to fetch TTS voices: {e}")
-        return []
+    return cached_voices
 
 current_tts_effect = "futuristic"
 
 @eel.expose
 def set_tts_voice(voice_id):
-    """Sets the active voice for the pyttsx3 engine."""
-    try:
-        if voice_id:
-            tts_engine.setProperty('voice', voice_id)
-            print_and_log(f"TTS Voice set to: {voice_id}")
-    except Exception as e:
-        log_error(f"Failed to set TTS voice: {e}")
+    """Sets the active voice for the pyttsx3 engine via command queue."""
+    if voice_id:
+        tts_queue.put({"type": "set_voice", "voice_id": voice_id})
+        print_and_log(f"Requested TTS Voice change to: {voice_id}")
 
 @eel.expose
 def set_tts_effect(effect):
@@ -504,7 +492,29 @@ def apply_dsp_effects(audio_data, sample_rate, effect_type):
 
 def tts_worker():
     """Background thread to process TTS speech sequentially without blocking."""
-    global tts_active
+    global tts_active, cached_voices
+
+    # Windows COM Initialization MUST happen in the specific thread that uses pyttsx3/SAPI5.
+    # Otherwise, .runAndWait() will freeze on the second call.
+    try:
+        import pythoncom
+        pythoncom.CoInitialize()
+    except ImportError:
+        pass # Not on Windows or pythoncom not installed
+
+    # Initialize engine IN the worker thread
+    tts_engine = pyttsx3.init()
+
+    # Cache voices for the UI
+    try:
+        voices = tts_engine.getProperty('voices')
+        for voice in voices:
+            cached_voices.append({
+                "id": voice.id,
+                "name": voice.name
+            })
+    except Exception as e:
+        log_error(f"Failed to fetch TTS voices inside worker: {e}")
 
     # Ensure temporary folder exists
     temp_dir = "temp_audio"
@@ -512,35 +522,49 @@ def tts_worker():
         os.makedirs(temp_dir)
 
     while True:
-        text = tts_queue.get()
-        if text:
-            tts_active = True
-            temp_file = os.path.join(temp_dir, "speech.wav")
-            try:
-                # Intercept TTS output to file
-                tts_engine.save_to_file(text, temp_file)
-                tts_engine.runAndWait()
+        task = tts_queue.get()
+        if not task:
+            continue
 
-                # Load the audio file via scipy
-                if os.path.exists(temp_file):
-                    sample_rate, audio_data = wav.read(temp_file)
+        # We can either receive a raw string (to speak) or a dict (for commands)
+        if isinstance(task, dict):
+            if task.get("type") == "set_voice":
+                try:
+                    tts_engine.setProperty('voice', task["voice_id"])
+                    print_and_log(f"Worker changed TTS Voice to: {task['voice_id']}")
+                except Exception as e:
+                    log_error(f"Failed to change voice inside worker: {e}")
+            continue
 
-                    # Apply active DSP effect
-                    processed_audio = apply_dsp_effects(audio_data, sample_rate, current_tts_effect)
+        # Otherwise it's text to speak
+        text = task
+        tts_active = True
+        temp_file = os.path.join(temp_dir, "speech.wav")
+        try:
+            # Intercept TTS output to file
+            tts_engine.save_to_file(text, temp_file)
+            tts_engine.runAndWait()
 
-                    # Play via sounddevice instead of pyttsx3 directly
-                    sd.play(processed_audio, sample_rate)
-                    sd.wait() # Block until playing is finished
+            # Load the audio file via scipy
+            if os.path.exists(temp_file):
+                sample_rate, audio_data = wav.read(temp_file)
 
-            except Exception as e:
-                log_error(f"TTS Engine Error: {e}")
-            finally:
-                # Cleanup temp file
-                if os.path.exists(temp_file):
-                    try: os.remove(temp_file)
-                    except: pass
+                # Apply active DSP effect
+                processed_audio = apply_dsp_effects(audio_data, sample_rate, current_tts_effect)
 
-            tts_active = False
+                # Play via sounddevice instead of pyttsx3 directly
+                sd.play(processed_audio, sample_rate)
+                sd.wait() # Block until playing is finished
+
+        except Exception as e:
+            log_error(f"TTS Engine Error: {e}")
+        finally:
+            # Cleanup temp file
+            if os.path.exists(temp_file):
+                try: os.remove(temp_file)
+                except: pass
+
+        tts_active = False
 
 # Start the TTS worker thread
 threading.Thread(target=tts_worker, daemon=True).start()
