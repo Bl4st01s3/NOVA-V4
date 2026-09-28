@@ -181,7 +181,7 @@ def send_message_to_nova(user_text):
         # without showing the user prompt in the UI chat history block.
         now = datetime.now()
         current_time_str = now.strftime("%I:%M %p")
-        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Provide a brief J.A.R.V.I.S.-style status report indicating that all systems are nominal and you are online. Greet the user and ask how you may assist them."
+        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Give a quick, conversational, J.A.R.V.I.S.-style spoken greeting to the user, confirming that you are fully online and ready. DO NOT use tools, JSON, or formatting. Output only the spoken dialogue."
         conversation_history.append({"role": "user", "content": hidden_prompt})
     else:
         print_and_log(f"User: {user_text}")
