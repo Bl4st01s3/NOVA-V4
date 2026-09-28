@@ -42,6 +42,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 import psutil
+import pyttsx3
 
 # Setup centralized logging to file
 log_file = open('nova.log', 'a', buffering=1)
@@ -286,6 +287,7 @@ def _process_llm_response_inner():
         response = client.chat.completions.create(**kwargs)
 
         ai_text = ""
+        sentence_buffer = ""
         tool_name = None
         tool_args_str = ""
 
@@ -309,7 +311,13 @@ def _process_llm_response_inner():
                 if len(ai_text) == 0 and token.startswith('"'):
                     token = token[1:]
                 ai_text += token
+                sentence_buffer += token
                 token_queue.put(token)
+
+                # Check for sentence completion (punctuation followed by a space or newline) to feed the TTS engine
+                if any(punc in sentence_buffer for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']):
+                    tts_queue.put(sentence_buffer.strip())
+                    sentence_buffer = ""
 
         # Finished generating.
         if tool_name:
@@ -367,9 +375,18 @@ def _process_llm_response_inner():
                     if len(ai_text) == 0 and token.startswith('"'):
                         token = token[1:]
                     ai_text += token
+                    sentence_buffer += token
                     token_queue.put(token)
 
+                    if any(punc in sentence_buffer for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']):
+                        tts_queue.put(sentence_buffer.strip())
+                        sentence_buffer = ""
+
         # Final append
+        # Flush any remaining text in the buffer to the TTS engine
+        if sentence_buffer.strip():
+            tts_queue.put(sentence_buffer.strip())
+
         # Strip trailing quotes if the LLM outputted them at the end
         if ai_text.endswith('"'):
             ai_text = ai_text[:-1]
@@ -402,6 +419,131 @@ def _process_llm_response_inner():
         except: pass
 
         return "ERROR_COMPLETE"
+
+# --- Text-To-Speech (TTS) Engine ---
+tts_queue = queue.Queue()
+tts_active = False
+tts_engine = pyttsx3.init()
+
+@eel.expose
+def get_tts_voices():
+    """Returns a list of installed system TTS voices for the UI dropdown."""
+    try:
+        voices = tts_engine.getProperty('voices')
+        voice_list = []
+        for voice in voices:
+            # SAPI5 voice IDs are very long, so we create a clean dict to return to JS
+            voice_list.append({
+                "id": voice.id,
+                "name": voice.name
+            })
+        return voice_list
+    except Exception as e:
+        log_error(f"Failed to fetch TTS voices: {e}")
+        return []
+
+current_tts_effect = "futuristic"
+
+@eel.expose
+def set_tts_voice(voice_id):
+    """Sets the active voice for the pyttsx3 engine."""
+    try:
+        if voice_id:
+            tts_engine.setProperty('voice', voice_id)
+            print_and_log(f"TTS Voice set to: {voice_id}")
+    except Exception as e:
+        log_error(f"Failed to set TTS voice: {e}")
+
+@eel.expose
+def set_tts_effect(effect):
+    """Sets the current DSP audio effect applied to TTS output."""
+    global current_tts_effect
+    current_tts_effect = effect
+    print_and_log(f"TTS Effect set to: {effect}")
+
+def apply_dsp_effects(audio_data, sample_rate, effect_type):
+    """Applies numpy/scipy math to raw audio array to simulate J.A.R.V.I.S effects."""
+    if effect_type == "natural":
+        return audio_data
+
+    # Convert to float for math
+    audio_float = audio_data.astype(np.float32) / 32768.0
+
+    if effect_type == "futuristic":
+        # 1. Simple Chorus/Flanger (Double the track, pitch shift slightly and delay)
+        delay_samples = int(sample_rate * 0.015) # 15ms delay
+        delayed_audio = np.zeros_like(audio_float)
+        delayed_audio[delay_samples:] = audio_float[:-delay_samples]
+
+        # Mix dry and wet
+        mixed = (audio_float * 0.7) + (delayed_audio * 0.3)
+
+        # 2. Convolution Reverb (Simulate a metallic room)
+        # Create an exponentially decaying impulse response
+        ir_length = int(sample_rate * 0.3) # 300ms tail
+        t = np.linspace(0, 1, ir_length, endpoint=False)
+        impulse = np.exp(-15 * t) * np.random.randn(ir_length)
+
+        # Convolve
+        reverb = signal.fftconvolve(mixed, impulse, mode='full')[:len(mixed)]
+
+        # Mix reverb back in lightly
+        final_audio = (mixed * 0.8) + (reverb * 0.1)
+
+    elif effect_type == "robotic":
+        # Robotic: hard noise gate + slight distortion + tight reverb
+        mixed = np.where(np.abs(audio_float) < 0.05, 0, audio_float) # Noise gate
+        mixed = np.clip(mixed * 1.5, -1.0, 1.0) # Distort
+        final_audio = mixed
+    else:
+        final_audio = audio_float
+
+    # Normalize back to 16-bit PCM
+    final_audio = np.clip(final_audio, -1.0, 1.0)
+    return (final_audio * 32767).astype(np.int16)
+
+def tts_worker():
+    """Background thread to process TTS speech sequentially without blocking."""
+    global tts_active
+
+    # Ensure temporary folder exists
+    temp_dir = "temp_audio"
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+
+    while True:
+        text = tts_queue.get()
+        if text:
+            tts_active = True
+            temp_file = os.path.join(temp_dir, "speech.wav")
+            try:
+                # Intercept TTS output to file
+                tts_engine.save_to_file(text, temp_file)
+                tts_engine.runAndWait()
+
+                # Load the audio file via scipy
+                if os.path.exists(temp_file):
+                    sample_rate, audio_data = wav.read(temp_file)
+
+                    # Apply active DSP effect
+                    processed_audio = apply_dsp_effects(audio_data, sample_rate, current_tts_effect)
+
+                    # Play via sounddevice instead of pyttsx3 directly
+                    sd.play(processed_audio, sample_rate)
+                    sd.wait() # Block until playing is finished
+
+            except Exception as e:
+                log_error(f"TTS Engine Error: {e}")
+            finally:
+                # Cleanup temp file
+                if os.path.exists(temp_file):
+                    try: os.remove(temp_file)
+                    except: pass
+
+            tts_active = False
+
+# Start the TTS worker thread
+threading.Thread(target=tts_worker, daemon=True).start()
 
 # --- Presence Tracking API ---
 presence_state = {
