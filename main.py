@@ -181,7 +181,7 @@ def send_message_to_nova(user_text):
         # without showing the user prompt in the UI chat history block.
         now = datetime.now()
         current_time_str = now.strftime("%I:%M %p")
-        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Give a quick, conversational, J.A.R.V.I.S.-style spoken greeting to the user, confirming that you are fully online and ready. DO NOT use tools, JSON, or formatting. Output only the spoken dialogue."
+        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Give a quick, conversational, J.A.R.V.I.S.-style spoken greeting to the user, confirming that you are fully online and ready. DO NOT use tools, JSON, or formatting. DO NOT wrap your response in quotation marks. Output only the raw spoken dialogue."
         conversation_history.append({"role": "user", "content": hidden_prompt})
     else:
         print_and_log(f"User: {user_text}")
@@ -305,6 +305,9 @@ def _process_llm_response_inner():
             # Handle Standard Content Streaming
             elif delta.content is not None:
                 token = delta.content
+                # Strip leading double quotes if it's the very first token
+                if len(ai_text) == 0 and token.startswith('"'):
+                    token = token[1:]
                 ai_text += token
                 token_queue.put(token)
 
@@ -361,10 +364,15 @@ def _process_llm_response_inner():
                 delta = chunk.choices[0].delta
                 if delta.content is not None:
                     token = delta.content
+                    if len(ai_text) == 0 and token.startswith('"'):
+                        token = token[1:]
                     ai_text += token
                     token_queue.put(token)
 
         # Final append
+        # Strip trailing quotes if the LLM outputted them at the end
+        if ai_text.endswith('"'):
+            ai_text = ai_text[:-1]
         conversation_history.append({"role": "assistant", "content": ai_text})
         print_and_log(f"NOVA: {ai_text}")
 
