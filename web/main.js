@@ -570,6 +570,66 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // Exposed Functions from Python
+eel.expose(triggerBootSequence);
+function triggerBootSequence() {
+    const chatContainer = document.getElementById('chat-container');
+    if (!chatContainer) return;
+
+    // Drop a system message indicating boot
+    const sysDiv = document.createElement('div');
+    sysDiv.classList.add('log-entry', 'system-log');
+    sysDiv.style.textAlign = 'center';
+    sysDiv.style.color = 'var(--cyan)';
+    sysDiv.style.marginBottom = '20px';
+    sysDiv.innerHTML = `<em>[ SYSTEM EVENT ] BIONIC ENGINE STARTED. NOVA AI SYSTEMS COMING ONLINE...</em>`;
+    chatContainer.appendChild(sysDiv);
+    window.scrollToBottom();
+
+    // The python backend will directly capture this hidden command
+    eel.send_message_to_nova("[SYSTEM_BOOT_SEQUENCE]");
+
+    // Start polling the local HTTP queue for the response
+    const pollInterval = setInterval(async () => {
+        try {
+            const response = await fetch('http://127.0.0.1:54321/stream');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.tokens && data.tokens.length > 0) {
+                    for (let token of data.tokens) {
+                        if (token === '[DONE]') {
+                            clearInterval(pollInterval);
+                            window.activeStreamingContentDiv = null;
+                            return;
+                        }
+
+                        // If this is the first token of the boot sequence, create the bubble
+                        if (!window.activeStreamingContentDiv) {
+                            // Quick manual creation of the bubble from outside DOMContentLoaded
+                            const messageDiv = document.createElement('div');
+                            messageDiv.classList.add('message', 'assistant');
+                            const avatar = document.createElement('div');
+                            avatar.classList.add('hexagon-avatar', 'assistant-avatar');
+                            const content = document.createElement('div');
+                            content.classList.add('message-content');
+                            messageDiv.appendChild(avatar);
+                            messageDiv.appendChild(content);
+                            chatContainer.appendChild(messageDiv);
+                            window.activeStreamingContentDiv = content;
+                        }
+
+                        const textNode = document.createTextNode(token);
+                        window.activeStreamingContentDiv.appendChild(textNode);
+                        if (token.includes('\n')) {
+                            window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                        }
+                        window.scrollToBottom();
+                    }
+                }
+            }
+        } catch (e) {}
+    }, 100);
+}
+
 eel.expose(appendSystemMessage);
 function appendSystemMessage(text) {
     // Keeping for backwards compatibility

@@ -160,10 +160,18 @@ def send_message_to_nova(user_text):
     Called from JS when the user sends a message.
     Spawns a background task to prevent Eel WebSocket timeouts during TTFT latency.
     """
-    print_and_log(f"User: {user_text}")
-
-    # Append user message to history immediately so the UI is in sync
-    conversation_history.append({"role": "user", "content": user_text})
+    if user_text == "[SYSTEM_BOOT_SEQUENCE]":
+        print_and_log("[SYSTEM] Intercepted boot sequence trigger.")
+        # Craft a special hidden prompt that forces the LLM to introduce itself
+        # without showing the user prompt in the UI chat history block.
+        now = datetime.now()
+        current_time_str = now.strftime("%I:%M %p")
+        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Provide a brief J.A.R.V.I.S.-style status report indicating that all systems are nominal and you are online. Greet the user and ask how you may assist them."
+        conversation_history.append({"role": "user", "content": hidden_prompt})
+    else:
+        print_and_log(f"User: {user_text}")
+        # Append normal user message to history immediately so the UI is in sync
+        conversation_history.append({"role": "user", "content": user_text})
 
     # Spawn the heavy LLM lifting into a background greenlet thread
     eel.spawn(process_llm_response)
@@ -852,7 +860,9 @@ def start_app():
             if models.data:
                 try: eel.setSystemStatus('online', 'Bionic Engine Online')
                 except: pass
-                print_and_log("[SYSTEM] Bionic Engine Online.")
+                print_and_log("[SYSTEM] Bionic Engine Online. Triggering boot sequence.")
+                try: eel.triggerBootSequence()
+                except: pass
             else:
                 try: eel.setSystemStatus('error', 'No Model Loaded')
                 except: pass
