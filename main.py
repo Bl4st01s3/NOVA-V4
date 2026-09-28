@@ -557,29 +557,42 @@ def tts_worker():
         text = task
         tts_active = True
         temp_file = os.path.join(temp_dir, "speech.wav")
+        print_and_log(f"[TTS WORKER] Picked up text from queue: {text}")
         try:
             # Intercept TTS output to file
+            print_and_log(f"[TTS WORKER] Saving raw TTS to: {temp_file}")
             tts_engine.save_to_file(text, temp_file)
             tts_engine.runAndWait()
 
             # Load the audio file via scipy
             if os.path.exists(temp_file):
+                print_and_log(f"[TTS WORKER] Reading generated .wav file. Size: {os.path.getsize(temp_file)} bytes")
                 sample_rate, audio_data = wav.read(temp_file)
+                print_and_log(f"[TTS WORKER] Applying DSP effect: '{current_tts_effect}'. Original Shape: {audio_data.shape}")
 
                 # Apply active DSP effect
                 processed_audio = apply_dsp_effects(audio_data, sample_rate, current_tts_effect)
+                print_and_log(f"[TTS WORKER] DSP complete. Playing via sounddevice...")
 
                 # Play via sounddevice instead of pyttsx3 directly
                 sd.play(processed_audio, sample_rate)
                 sd.wait() # Block until playing is finished
+                print_and_log(f"[TTS WORKER] Playback finished for this sentence.")
+            else:
+                log_error(f"[TTS WORKER] Temporary wav file {temp_file} was not created!")
 
         except Exception as e:
-            log_error(f"TTS Engine Error: {e}")
+            import traceback
+            error_trace = traceback.format_exc()
+            log_error(f"[TTS WORKER] CRITICAL ERROR: {error_trace}")
         finally:
             # Cleanup temp file
             if os.path.exists(temp_file):
-                try: os.remove(temp_file)
-                except: pass
+                try:
+                    os.remove(temp_file)
+                    print_and_log(f"[TTS WORKER] Cleaned up temporary wav file.")
+                except Exception as cleanup_error:
+                    log_error(f"[TTS WORKER] Failed to cleanup wav file: {cleanup_error}")
 
         tts_active = False
 
