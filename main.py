@@ -99,7 +99,7 @@ def set_streamer_mode(enabled):
 
     # Notify frontend to sync the checkbox UI
     try:
-        eel.sync_streamer_mode_ui(enabled)
+        eel.sync_streamer_mode_ui(enabled)()
     except:
         pass
 
@@ -155,11 +155,11 @@ def process_llm_response():
         import traceback
         error_trace = traceback.format_exc()
         log_error(f"CRITICAL ERROR in background thread: {error_trace}")
-        try: eel.pushAIMessage(f"System Error: A critical failure occurred in the background thread. Check nova.log for details.")
+        try: eel.pushAIMessage(f"System Error: A critical failure occurred in the background thread. Check nova.log for details.")()
         except: pass
-        try: eel.streamAIComplete()
+        try: eel.streamAIComplete()()
         except: pass
-        try: eel.setNovaState('error')
+        try: eel.setNovaState('error')()
         except: pass
 
 def _process_llm_response_inner():
@@ -175,11 +175,11 @@ def _process_llm_response_inner():
 
         if not models.data:
             error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
-            try: eel.pushAIMessage(error_msg)
+            try: eel.pushAIMessage(error_msg)()
             except: pass
-            try: eel.streamAIComplete()
+            try: eel.streamAIComplete()()
             except: pass
-            try: eel.setNovaState('error')
+            try: eel.setNovaState('error')()
             except: pass
             return "ERROR_NO_MODEL"
 
@@ -268,20 +268,20 @@ def _process_llm_response_inner():
 
                         if token:
                             ai_text += token
-                            try: eel.streamAIToken(token)
+                            try: eel.streamAIToken(token)()
                             except Exception: pass
 
             # 2. Handle Standard Content Streaming (Fallback if it ignores tools)
             elif delta.content is not None:
                 token = delta.content
                 ai_text += token
-                try: eel.streamAIToken(token)
+                try: eel.streamAIToken(token)()
                 except Exception: pass
 
         # Finished generating.
         if full_json_args:
             print_and_log(f"NOVA RAW JSON: {full_json_args}")
-            eel.addActivityLog('tool', f"LLM called 'speak' tool. Raw JSON logged.")
+            eel.addActivityLog('tool', f"LLM called 'speak' tool. Raw JSON logged.")()
             # Try to safely parse the final JSON to ensure ai_text is perfectly clean
             try:
                 args = json.loads(full_json_args)
@@ -301,11 +301,11 @@ def _process_llm_response_inner():
         print_and_log(f"NOVA: {ai_text}")
 
         # Notify frontend JS that the stream is completely done
-        try: eel.streamAIComplete()
+        try: eel.streamAIComplete()()
         except: pass
 
         # Revert OBS to idle when done talking
-        try: eel.setNovaState('idle')
+        try: eel.setNovaState('idle')()
         except: pass
 
         # Return a success flag since the text was already streamed
@@ -317,14 +317,14 @@ def _process_llm_response_inner():
 
         # We need to push the error visually to the UI chat window
         # because this background thread no longer returns data directly to the user's JS promise
-        try: eel.pushAIMessage(error_msg)
+        try: eel.pushAIMessage(error_msg)()
         except: pass
 
-        try: eel.streamAIComplete()
+        try: eel.streamAIComplete()()
         except: pass
 
         # Set OBS to error state
-        try: eel.setNovaState('error')
+        try: eel.setNovaState('error')()
         except: pass
 
         return "ERROR_COMPLETE"
@@ -681,7 +681,7 @@ def generate_presence_message(event_type):
         ]
 
         # Trigger UI to show talking state in OBS
-        try: eel.setNovaState('talking')
+        try: eel.setNovaState('talking')()
         except: pass
 
         response = client.chat.completions.create(
@@ -699,10 +699,10 @@ def generate_presence_message(event_type):
         # We wrap these in separate try/except blocks because Eel broadcasts to all open HTML windows.
         # pushAIMessage exists in index.html but not obs_overlay.html, so it will throw an exception there.
         # We don't want that exception to stop the OBS state from reverting to idle.
-        try: eel.pushAIMessage(ai_text)
+        try: eel.pushAIMessage(ai_text)()
         except Exception as e: pass
 
-        try: eel.setNovaState('idle')
+        try: eel.setNovaState('idle')()
         except Exception as e: pass
 
     except Exception as e:
@@ -764,7 +764,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
                         print_and_log("[PRESENCE API] User has gone idle/left (Sleep mode).")
                         presence_state["is_present"] = False
                         presence_state["last_event_time"] = now
-                        try: eel.addActivityLog('system', "Vision system: User absent. Sleep mode activated.")
+                        try: eel.addActivityLog('system', "Vision system: User absent. Sleep mode activated.")()
                         except: pass
 
                     elif event == "wakeup":
@@ -773,7 +773,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
 
                         if not presence_state["is_present"] or time_away > 120:
                             print_and_log(f"[PRESENCE API] User was away for {int(time_away)}s. Triggering greeting.")
-                            try: eel.addActivityLog('system', "Vision system: User returned. Generating greeting.")
+                            try: eel.addActivityLog('system', "Vision system: User returned. Generating greeting.")()
                             except: pass
                             threading.Thread(target=generate_presence_message, args=("wakeup",), daemon=True).start()
 
@@ -785,7 +785,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
                         print_and_log("[PRESENCE API] User is actively leaving.")
                         presence_state["is_present"] = False
                         presence_state["last_event_time"] = now
-                        try: eel.addActivityLog('system', "Vision system: User actively leaving. Generating farewell.")
+                        try: eel.addActivityLog('system', "Vision system: User actively leaving. Generating farewell.")()
                         except: pass
                         threading.Thread(target=generate_presence_message, args=("leaving",), daemon=True).start()
 
@@ -824,15 +824,15 @@ def start_app():
             # If this succeeds, it means LM studio is responding
             models = client.models.list()
             if models.data:
-                try: eel.setSystemStatus('online', 'Bionic Engine Online')
+                try: eel.setSystemStatus('online', 'Bionic Engine Online')()
                 except: pass
                 print_and_log("[SYSTEM] Bionic Engine Online.")
             else:
-                try: eel.setSystemStatus('error', 'No Model Loaded')
+                try: eel.setSystemStatus('error', 'No Model Loaded')()
                 except: pass
                 print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded.")
         except Exception as e:
-            try: eel.setSystemStatus('error', 'Bionic Engine Offline')
+            try: eel.setSystemStatus('error', 'Bionic Engine Offline')()
             except: pass
             print_and_log(f"[SYSTEM] Bionic Engine Offline or Unreachable: {e}")
 

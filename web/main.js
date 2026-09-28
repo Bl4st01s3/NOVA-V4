@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const micBtn = document.getElementById('mic-btn');
 
     // Global reference to the currently streaming message div
-    let activeStreamingContentDiv = null;
+    window.window.activeStreamingContentDiv = null;
 
     async function sendMessage() {
         const text = userInput.value.trim();
@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Prepare an empty bubble for the streaming response
         removeMessage(loadingId);
-        activeStreamingContentDiv = createEmptyMessageBubble('assistant');
+        window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
 
         // We do NOT await this call! If LM Studio takes 2 minutes to start generating,
         // Eel's internal WebSocket promise will time out and crash the frontend connection.
@@ -46,7 +46,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (error) {
             removeMessage(loadingId);
             appendMessage('system', 'Error connecting to Bionic Engine: ' + error);
-            activeStreamingContentDiv = null;
+            window.activeStreamingContentDiv = null;
         }
     }
 
@@ -460,7 +460,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const textNode = document.createTextNode(text);
         content.appendChild(textNode);
         content.innerHTML = content.innerHTML.replace(/\n/g, '<br>');
-        scrollToBottom();
+        window.scrollToBottom();
+        return true;
     }
 
     function createEmptyMessageBubble(sender) {
@@ -482,29 +483,29 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         chatContainer.appendChild(messageDiv);
-        scrollToBottom();
+        window.scrollToBottom();
         return content;
     }
 
     // Exposed streaming handler
     window.streamAIToken = function(token) {
-        if (activeStreamingContentDiv) {
+        if (window.activeStreamingContentDiv) {
             // Append safely keeping line breaks
             const textNode = document.createTextNode(token);
-            activeStreamingContentDiv.appendChild(textNode);
+            window.activeStreamingContentDiv.appendChild(textNode);
             // We periodically update innerHTML to parse newlines into <br>
             // but doing it every token is expensive. Playwright check will verify if we need it.
             if (token.includes('\n')) {
-                activeStreamingContentDiv.innerHTML = activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
             }
-            scrollToBottom();
+            window.scrollToBottom();
         }
         return true;
     }
 
     // Called by python when the stream is completely finished
     window.streamAIComplete = function() {
-        activeStreamingContentDiv = null;
+        window.activeStreamingContentDiv = null;
         return true;
     }
 
@@ -525,7 +526,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.appendChild(content);
 
         chatContainer.appendChild(messageDiv);
-        scrollToBottom();
+        window.scrollToBottom();
         return id;
     }
 
@@ -534,8 +535,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (el) el.remove();
     }
 
-    function scrollToBottom() {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+    window.scrollToBottom = function() {
+        const chatC = document.getElementById('chat-container');
+        if (chatC) chatC.scrollTop = chatC.scrollHeight;
     }
 });
 
