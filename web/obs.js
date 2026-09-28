@@ -332,7 +332,6 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log("NOVA State changed to:", state);
             currentState = state;
         }
-        return true;
     };
 
     // Register it with Eel explicitly if needed
