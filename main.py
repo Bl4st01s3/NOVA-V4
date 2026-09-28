@@ -177,7 +177,7 @@ def _process_llm_response_inner():
             error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
             try: eel.pushAIMessage(error_msg)
             except: pass
-            try: eel.streamAIComplete
+            try: eel.streamAIComplete()
             except: pass
             try: eel.setNovaState('error')
             except: pass
@@ -301,7 +301,7 @@ def _process_llm_response_inner():
         print_and_log(f"NOVA: {ai_text}")
 
         # Notify frontend JS that the stream is completely done
-        try: eel.streamAIComplete
+        try: eel.streamAIComplete()
         except: pass
 
         # Revert OBS to idle when done talking
@@ -320,7 +320,7 @@ def _process_llm_response_inner():
         try: eel.pushAIMessage(error_msg)
         except: pass
 
-        try: eel.streamAIComplete
+        try: eel.streamAIComplete()
         except: pass
 
         # Set OBS to error state

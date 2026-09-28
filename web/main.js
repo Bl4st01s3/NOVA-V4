@@ -499,13 +499,11 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             scrollToBottom();
         }
-        return true;
     }
 
     // Called by python when the stream is completely finished
     window.streamAIComplete = function() {
         activeStreamingContentDiv = null;
-        return true;
     }
 
     function appendLoading() {
@@ -544,14 +542,13 @@ eel.expose(appendSystemMessage);
 function appendSystemMessage(text) {
     // Keeping for backwards compatibility
     console.log("System Message:", text);
-    return true;
 }
 
 eel.expose(pushAIMessage);
 function pushAIMessage(text) {
     // Re-use the logic from inside DOMContentLoaded
     const chatContainer = document.getElementById('chat-container');
-    if (!chatContainer) return true;
+    if (!chatContainer) return;
 
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', 'assistant');
@@ -571,13 +568,12 @@ function pushAIMessage(text) {
 
     chatContainer.appendChild(messageDiv);
     chatContainer.scrollTop = chatContainer.scrollHeight;
-    return true;
 }
 
 eel.expose(addActivityLog);
 function addActivityLog(type, message) {
     const logContainer = document.getElementById('log-container');
-    if (!logContainer) return true;
+    if (!logContainer) return;
 
     const logEntry = document.createElement('div');
     logEntry.classList.add('log-entry', type === 'tool' ? 'tool-log' : 'system-log');
@@ -593,7 +589,6 @@ function addActivityLog(type, message) {
 
     // Auto scroll log to bottom
     logContainer.scrollTop = logContainer.scrollHeight;
-    return true;
 }
 eel.expose(syncStreamerModeUI, "sync_streamer_mode_ui");
 function syncStreamerModeUI(isEnabled) {
@@ -606,7 +601,6 @@ function syncStreamerModeUI(isEnabled) {
         const stateText = isEnabled ? "ENABLED (OBS Detected)" : "DISABLED (OBS Closed)";
         addActivityLog('system', `Streamer Mode automatically ${stateText}.`);
     }
-    return true;
 }
 
 eel.expose(window.streamAIToken, "streamAIToken");
@@ -616,7 +610,7 @@ eel.expose(setSystemStatus);
 function setSystemStatus(state, msg) {
     const statusText = document.getElementById('system-status-text');
     const statusDot = document.getElementById('system-status-dot');
-    if (!statusText || !statusDot) return true;
+    if (!statusText || !statusDot) return;
 
     statusText.innerText = msg;
 
@@ -637,5 +631,4 @@ function setSystemStatus(state, msg) {
         statusDot.style.boxShadow = 'none';
         statusDot.style.animation = 'blink 1s infinite';
     }
-    return true;
 }
