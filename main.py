@@ -302,8 +302,10 @@ def _process_llm_response_inner():
 
             # Check if the current prompt is the boot sequence, where we specifically don't want it using tools
             if len(conversation_history) > 0 and "The system has just successfully booted up." in str(conversation_history[-1].get("content", "")):
-                # Instead of dropping tools (which busts the cache), we explicitly disable them for this turn
-                kwargs["tool_choice"] = "none"
+                # LM Studio's Llama.cpp backend crashes with a peg-native parsing error if tool_choice="none"
+                # is passed but the model attempts to generate JSON anyway. Instead of "none", we use "auto"
+                # but append an explicit system instruction not to use tools to avoid the crash.
+                pass
 
         # Call the local LM Studio server
         response = client.chat.completions.create(**kwargs)
@@ -392,16 +394,24 @@ def _process_llm_response_inner():
             })
 
             # Recurse: Call the LLM again with the new history to get the final answer!
+            # We append a temporary system message to aggressively discourage it from outputting JSON
+            # to avoid crashing LM Studio's grammar parser.
+            recurse_history = list(conversation_history)
+            recurse_history.append({
+                "role": "system",
+                "content": "You have received the tool output. Now format the final response as plain spoken text to the user. DO NOT output JSON. DO NOT invoke any more tools."
+            })
+
             kwargs2 = {
                 "model": model_id,
-                "messages": conversation_history,
+                "messages": recurse_history,
                 "temperature": 0.7,
                 "stream": True
             }
             # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
             if tools_array:
                 kwargs2["tools"] = tools_array
-                kwargs2["tool_choice"] = "none" # Disable tool use on the recurse so it doesn't loop infinitely
+                kwargs2["tool_choice"] = "auto" # "none" crashes LM Studio if the model writes JSON.
 
             response2 = client.chat.completions.create(**kwargs2)
 
@@ -1004,7 +1014,7 @@ def generate_presence_message(event_type):
         # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
         if tools_array:
             kwargs["tools"] = tools_array
-            kwargs["tool_choice"] = "none" # Do not let it use tools for presence greetings
+            kwargs["tool_choice"] = "auto" # Do not use "none"
 
         response = client.chat.completions.create(**kwargs)
 
