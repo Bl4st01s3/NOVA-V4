@@ -1,0 +1,12 @@
+{
+    "type": "function",
+    "function": {
+        "name": "nervous_system",
+        "description": "Get overnight security and environment events from the Banana Pi.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+}

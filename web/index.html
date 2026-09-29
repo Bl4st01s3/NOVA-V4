@@ -81,8 +81,14 @@
                 <div class="pane-header">
                     <h3>TOOL CONFIGURATION</h3>
                 </div>
-                <div class="settings-content">
-                    <p class="placeholder-text">Available agent tools will be configured here.</p>
+                <div class="settings-content" id="tools-tab-content">
+                    <div class="settings-card">
+                        <h4>Active AI Tools</h4>
+                        <p class="card-desc">Select which tools NOVA can access during normal conversation. Disabling a tool prevents the AI from using it.</p>
+                        <div class="form-group" id="ai-tools-container" style="display: flex; gap: 15px; flex-direction: column;">
+                            <!-- Checkboxes populated dynamically by JS -->
+                        </div>
+                    </div>
                 </div>
             </section>
 

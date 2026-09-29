@@ -227,40 +227,32 @@ def process_llm_response():
         try: eel.setNovaState('error')
         except: pass
 
+active_llm_tools = {}
+
+@eel.expose
+def update_llm_tools_prefs(prefs):
+    """Updates which tools are globally enabled for the LLM."""
+    global active_llm_tools
+    active_llm_tools.update(prefs)
+    print_and_log(f"Updated LLM Tools Preferences: {active_llm_tools}")
+
 def build_tools_array():
     """Builds the tools array for the LLM based on available tools."""
     tools_array = []
     available_tools = get_available_tools()
 
-    # We will hardcode schemas for now, but in the future, these could be loaded from config.json inside each tool
     for t in available_tools:
-        if t == "weather":
-            tools_array.append({
-                "type": "function",
-                "function": {
-                    "name": "weather",
-                    "description": "Get the current local weather.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-        elif t == "octoprint":
-            tools_array.append({
-                "type": "function",
-                "function": {
-                    "name": "octoprint",
-                    "description": "Get the status of the 3D printer.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-        # Add other tools here...
+        # Check if the tool is enabled for LLM use
+        if active_llm_tools.get(t, True):
+            schema_path = os.path.join("tools", t, "schema.json")
+            if os.path.exists(schema_path):
+                try:
+                    with open(schema_path, "r", encoding="utf-8") as f:
+                        schema = json.load(f)
+                        tools_array.append(schema)
+                except Exception as e:
+                    log_error(f"Failed to load schema for tool {t}: {e}")
+
     return tools_array
 
 def _process_llm_response_inner():
@@ -674,7 +666,7 @@ briefing_prefs = {
 
 @eel.expose
 def get_available_tools():
-    """Scans the tools/ directory and returns a list of available tool subdirectories."""
+    """Scans the tools/ directory and returns a sorted list of available tool subdirectories."""
     tools_dir = "tools"
     if not os.path.exists(tools_dir):
         return []
@@ -686,6 +678,7 @@ def get_available_tools():
         if os.path.isdir(item_path) and os.path.isfile(os.path.join(item_path, "main.py")):
             available_tools.append(item)
 
+    available_tools.sort()
     return available_tools
 
 @eel.expose
