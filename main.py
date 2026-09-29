@@ -28,6 +28,8 @@ import os
 import threading
 import json
 import time
+
+ACTIVE_MODEL_ID = None
 import queue
 
 # Queue to hold text tokens to bypass Eel WebSockets
@@ -226,21 +228,39 @@ def process_llm_response():
         except: pass
 
 def build_tools_array():
-    """Builds the tools array for the LLM dynamically from tool config.json files."""
+    """Builds the tools array for the LLM based on available tools."""
     tools_array = []
     available_tools = get_available_tools()
 
-    for tool_name in available_tools:
-        config_path = os.path.join("tools", tool_name, "config.json")
-        if os.path.exists(config_path):
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                    if "schema" in config:
-                        tools_array.append(config["schema"])
-            except Exception as e:
-                log_error(f"Failed to load schema for tool {tool_name}: {e}")
-
+    # We will hardcode schemas for now, but in the future, these could be loaded from config.json inside each tool
+    for t in available_tools:
+        if t == "weather":
+            tools_array.append({
+                "type": "function",
+                "function": {
+                    "name": "weather",
+                    "description": "Get the current local weather.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            })
+        elif t == "octoprint":
+            tools_array.append({
+                "type": "function",
+                "function": {
+                    "name": "octoprint",
+                    "description": "Get the status of the 3D printer.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": []
+                    }
+                }
+            })
+        # Add other tools here...
     return tools_array
 
 def _process_llm_response_inner():
@@ -251,27 +271,29 @@ def _process_llm_response_inner():
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     try:
-        # Fetch available models to auto-select the loaded one
-        models = client.models.list()
+        global ACTIVE_MODEL_ID
+        if not ACTIVE_MODEL_ID:
+            try:
+                models = client.models.list()
+                if not models.data:
+                    error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
+                    try: eel.pushAIMessage(error_msg)
+                    except: pass
+                    token_queue.put('[DONE]')
+                    try: eel.setNovaState('error')
+                    except: pass
+                    return "ERROR_NO_MODEL"
+                ACTIVE_MODEL_ID = models.data[0].id
+            except Exception:
+                ACTIVE_MODEL_ID = "local-model"
 
-        if not models.data:
-            error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
-            try: eel.pushAIMessage(error_msg)
-            except: pass
-            token_queue.put('[DONE]')
-            try: eel.setNovaState('error')
-            except: pass
-            return "ERROR_NO_MODEL"
-
-        # Select the ID of the first available model
-        model_id = models.data[0].id
-        print_and_log(f"Using model: {model_id}")
+        print_and_log(f"Using model: {ACTIVE_MODEL_ID}")
 
         tools_array = build_tools_array()
 
         # Build the payload arguments.
         kwargs = {
-            "model": model_id,
+            "model": ACTIVE_MODEL_ID,
             "messages": conversation_history,
             "temperature": 0.7,
             "stream": True
@@ -672,41 +694,6 @@ def update_briefing_prefs(prefs):
     briefing_prefs.update(prefs)
     print_and_log(f"Updated Briefing Preferences: {briefing_prefs}")
 
-@eel.expose
-def get_tool_config(tool_name):
-    """Returns the config.json dictionary for a given tool."""
-    config_path = os.path.join("tools", tool_name, "config.json")
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            log_error(f"Failed to read config for {tool_name}: {e}")
-    return None
-
-@eel.expose
-def save_tool_settings(tool_name, updated_settings):
-    """Updates only the 'settings' block of a tool's config.json."""
-    config_path = os.path.join("tools", tool_name, "config.json")
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-
-            if "settings" in config:
-                for key, val in updated_settings.items():
-                    if key in config["settings"]:
-                        config["settings"][key]["value"] = val
-
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=4)
-
-            print_and_log(f"Saved configuration for tool: {tool_name}")
-            return True
-        except Exception as e:
-            log_error(f"Failed to save config for {tool_name}: {e}")
-    return False
-
 # --- Voice Profile Persistence ---
 VOICE_PROFILES_FILE = "voice_profiles.json"
 
@@ -1008,10 +995,16 @@ def generate_presence_message(event_type):
         return
 
     try:
-        # Fetch model
-        models = client.models.list()
-        if not models.data: return
-        model_id = models.data[0].id
+        global ACTIVE_MODEL_ID
+        if not ACTIVE_MODEL_ID:
+            try:
+                models = client.models.list()
+                if models.data:
+                    ACTIVE_MODEL_ID = models.data[0].id
+                else:
+                    return
+            except Exception:
+                return
 
         # We append directly to the main conversation history to leverage the existing KV Cache.
         # Sending a one-off temp_history array causes the LLM engine to completely wipe the KV Cache
@@ -1024,7 +1017,7 @@ def generate_presence_message(event_type):
 
         tools_array = build_tools_array()
         kwargs = {
-            "model": model_id,
+            "model": ACTIVE_MODEL_ID,
             "messages": conversation_history,
             "temperature": 0.8
         }
@@ -1174,18 +1167,22 @@ def start_app():
         try:
             print_and_log("[SYSTEM] Pinging Bionic Engine...")
             # If this succeeds, it means LM studio is responding
+            global ACTIVE_MODEL_ID
             models = client.models.list()
             if models.data:
+                ACTIVE_MODEL_ID = models.data[0].id
                 try: eel.setSystemStatus('online', 'Bionic Engine Online')
                 except: pass
                 print_and_log("[SYSTEM] Bionic Engine Online. Triggering boot sequence.")
                 try: eel.triggerBootSequence()
                 except: pass
             else:
+                ACTIVE_MODEL_ID = "local-model"
                 try: eel.setSystemStatus('error', 'No Model Loaded')
                 except: pass
                 print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded.")
         except Exception as e:
+            ACTIVE_MODEL_ID = "local-model"
             try: eel.setSystemStatus('error', 'Bionic Engine Offline')
             except: pass
             print_and_log(f"[SYSTEM] Bionic Engine Offline or Unreachable: {e}")
