@@ -137,6 +137,15 @@ When using tools, do so silently and seamlessly to provide the most up-to-date a
 # Streamer Mode Toggle State
 streamer_mode_enabled = False
 
+active_llm_tools = {}
+
+@eel.expose
+def update_llm_tools_prefs(prefs):
+    """Updates which tools are globally enabled for the LLM."""
+    global active_llm_tools
+    active_llm_tools.update(prefs)
+    print_and_log(f"Updated LLM Tools Preferences: {active_llm_tools}")
+
 # Load system prompt from file so it's easily editable by the user
 def load_system_prompt():
     prompt_file = "system_prompt.txt"
@@ -285,15 +294,6 @@ def process_llm_response():
         token_queue.put('[DONE]')
         try: eel.setNovaState('error')
         except: pass
-
-active_llm_tools = {}
-
-@eel.expose
-def update_llm_tools_prefs(prefs):
-    """Updates which tools are globally enabled for the LLM."""
-    global active_llm_tools
-    active_llm_tools.update(prefs)
-    print_and_log(f"Updated LLM Tools Preferences: {active_llm_tools}")
 
 def build_tools_array():
     """Builds the tools array for the LLM based on available tools."""
