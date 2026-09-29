@@ -1,0 +1,12 @@
+{
+    "schema": {
+        "name": "calendar",
+        "description": "Get the user's schedule for today.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    "settings": {}
+}

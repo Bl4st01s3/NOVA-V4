@@ -388,8 +388,100 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch(e) {}
     }
 
+    async function loadToolsUI() {
+        const toolsSettingsContainer = document.getElementById('tool-settings-container');
+        try {
+            const availableTools = await eel.get_available_tools()();
+            if (availableTools.length === 0) {
+                toolsSettingsContainer.innerHTML = '<p class="placeholder-text">No modular tools installed.</p>';
+                return;
+            }
+
+            toolsSettingsContainer.innerHTML = '';
+
+            for (const toolName of availableTools) {
+                const config = await eel.get_tool_config(toolName)();
+
+                // Capitalize first letter for display
+                const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+
+                const card = document.createElement('div');
+                card.className = 'settings-card';
+                card.innerHTML = `
+                    <h4>${displayName}</h4>
+                    <p class="card-desc">${config && config.schema ? config.schema.description : 'No description available.'}</p>
+                `;
+
+                if (config && config.settings && Object.keys(config.settings).length > 0) {
+                    const inputsMap = {};
+
+                    for (const [key, setting] of Object.entries(config.settings)) {
+                        const formGroup = document.createElement('div');
+                        formGroup.className = 'form-group';
+
+                        const label = document.createElement('label');
+                        label.innerText = setting.label;
+
+                        const input = document.createElement('input');
+                        input.type = setting.type === 'password' ? 'password' : 'text';
+                        input.className = 'cyber-input';
+                        input.value = setting.value || '';
+
+                        inputsMap[key] = input;
+
+                        formGroup.appendChild(label);
+                        formGroup.appendChild(input);
+                        card.appendChild(formGroup);
+                    }
+
+                    const saveBtn = document.createElement('button');
+                    saveBtn.className = 'cyber-btn';
+                    saveBtn.style.marginTop = '10px';
+                    saveBtn.innerText = '[ SAVE CONFIG ]';
+
+                    saveBtn.onclick = async () => {
+                        const updatedSettings = {};
+                        for (const key in inputsMap) {
+                            let val = inputsMap[key].value;
+                            if (config.settings[key].type === 'number') {
+                                val = Number(val);
+                            }
+                            updatedSettings[key] = val;
+                        }
+                        const success = await eel.save_tool_settings(toolName, updatedSettings)();
+                        if (success) {
+                            saveBtn.innerText = '[ SAVED ]';
+                            saveBtn.style.borderColor = '#0f0';
+                            saveBtn.style.color = '#0f0';
+                            setTimeout(() => {
+                                saveBtn.innerText = '[ SAVE CONFIG ]';
+                                saveBtn.style.borderColor = 'var(--cyan)';
+                                saveBtn.style.color = 'var(--cyan)';
+                            }, 2000);
+                        }
+                    };
+
+                    card.appendChild(saveBtn);
+                } else {
+                    const noConfig = document.createElement('p');
+                    noConfig.style.fontSize = '12px';
+                    noConfig.style.color = '#888';
+                    noConfig.innerText = 'No configuration required for this tool.';
+                    card.appendChild(noConfig);
+                }
+
+                toolsSettingsContainer.appendChild(card);
+            }
+        } catch (e) {
+            console.error("Failed to build tool settings UI", e);
+        }
+    }
+
     // Load dynamic tools after a small delay to ensure Eel is ready
-    setTimeout(loadDynamicTools, 500);
+    setTimeout(() => {
+        loadDynamicTools();
+        loadToolsUI();
+    }, 500);
 
     // Audio Device Selection Logic
     async function loadAudioDevices() {

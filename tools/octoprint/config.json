@@ -1,0 +1,15 @@
+{
+    "schema": {
+        "name": "octoprint",
+        "description": "Get the status of the 3D printer.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    "settings": {
+        "printer_ip": {"type": "string", "label": "Printer IP Address", "value": ""},
+        "api_key": {"type": "password", "label": "Octoprint API Key", "value": ""}
+    }
+}

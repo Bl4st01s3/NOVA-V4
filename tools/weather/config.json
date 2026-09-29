@@ -1,0 +1,14 @@
+{
+    "schema": {
+        "name": "weather",
+        "description": "Get the current local weather.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    "settings": {
+        "location": {"type": "string", "label": "City, Country", "value": ""}
+    }
+}

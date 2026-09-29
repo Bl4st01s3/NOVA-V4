@@ -226,39 +226,21 @@ def process_llm_response():
         except: pass
 
 def build_tools_array():
-    """Builds the tools array for the LLM based on available tools."""
+    """Builds the tools array for the LLM dynamically from tool config.json files."""
     tools_array = []
     available_tools = get_available_tools()
 
-    # We will hardcode schemas for now, but in the future, these could be loaded from config.json inside each tool
-    for t in available_tools:
-        if t == "weather":
-            tools_array.append({
-                "type": "function",
-                "function": {
-                    "name": "weather",
-                    "description": "Get the current local weather.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-        elif t == "octoprint":
-            tools_array.append({
-                "type": "function",
-                "function": {
-                    "name": "octoprint",
-                    "description": "Get the status of the 3D printer.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {},
-                        "required": []
-                    }
-                }
-            })
-        # Add other tools here...
+    for tool_name in available_tools:
+        config_path = os.path.join("tools", tool_name, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    if "schema" in config:
+                        tools_array.append(config["schema"])
+            except Exception as e:
+                log_error(f"Failed to load schema for tool {tool_name}: {e}")
+
     return tools_array
 
 def _process_llm_response_inner():
@@ -689,6 +671,41 @@ def update_briefing_prefs(prefs):
     global briefing_prefs
     briefing_prefs.update(prefs)
     print_and_log(f"Updated Briefing Preferences: {briefing_prefs}")
+
+@eel.expose
+def get_tool_config(tool_name):
+    """Returns the config.json dictionary for a given tool."""
+    config_path = os.path.join("tools", tool_name, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log_error(f"Failed to read config for {tool_name}: {e}")
+    return None
+
+@eel.expose
+def save_tool_settings(tool_name, updated_settings):
+    """Updates only the 'settings' block of a tool's config.json."""
+    config_path = os.path.join("tools", tool_name, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            if "settings" in config:
+                for key, val in updated_settings.items():
+                    if key in config["settings"]:
+                        config["settings"][key]["value"] = val
+
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+
+            print_and_log(f"Saved configuration for tool: {tool_name}")
+            return True
+        except Exception as e:
+            log_error(f"Failed to save config for {tool_name}: {e}")
+    return False
 
 # --- Voice Profile Persistence ---
 VOICE_PROFILES_FILE = "voice_profiles.json"

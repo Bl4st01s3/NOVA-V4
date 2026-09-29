@@ -1,5 +1,16 @@
 {
-    "pi_ip": "192.168.1.100",
-    "pi_port": 5000,
-    "api_key": "YOUR_SECRET_KEY"
+    "schema": {
+        "name": "nervous_system",
+        "description": "Get overnight activity logs from the vision system.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    "settings": {
+        "pi_ip": {"type": "string", "label": "Banana Pi IP", "value": "192.168.1.100"},
+        "pi_port": {"type": "number", "label": "Port", "value": 5000},
+        "api_key": {"type": "password", "label": "API Key", "value": ""}
+    }
 }
