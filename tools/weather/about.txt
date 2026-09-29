@@ -1,0 +1,1 @@
+This tool fetches the current, real-time local weather. Use it when the user asks what the weather is like, if it's raining, what the temperature is, or if they need a coat.

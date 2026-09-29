@@ -1,0 +1,1 @@
+This tool queries an always-on secondary device (Banana Pi) that acts as the "Nervous System". It tracks offline/background events like security logs, temperature, humidity, power cuts, and network outages. Use it to get a summary of what happened while the user was away or asleep. Do not use this tool to list your own tools or system capabilities.

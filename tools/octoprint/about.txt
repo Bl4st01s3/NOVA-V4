@@ -1,0 +1,1 @@
+This tool checks the status of the local 3D printers on the network via Octoprint. Use it when the user asks about the status of a print, the temperature of the printer bed/nozzle, or if a 3D print is finished. Note: This tool currently returns a placeholder message.
