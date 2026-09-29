@@ -68,11 +68,40 @@ def log_error(message):
 import httpx
 import re
 
+# Cache for phonetic overrides
+phonetic_overrides = {}
+
+def load_phonetic_overrides():
+    """Loads phonetic overrides from tool config.json files."""
+    global phonetic_overrides
+    phonetic_overrides.clear()
+
+    tools_dir = "tools"
+    if os.path.exists(tools_dir):
+        for item in os.listdir(tools_dir):
+            item_path = os.path.join(tools_dir, item)
+            if os.path.isdir(item_path):
+                config_path = os.path.join(item_path, "config.json")
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            config = json.load(f)
+                            if "pronunciation" in config:
+                                # We map the tool's name (case-insensitive search) to its phonetic spelling
+                                phonetic_overrides[item.lower()] = config["pronunciation"]
+                    except Exception as e:
+                        log_error(f"Failed to load phonetic config for {item}: {e}")
+
 def clean_text_for_speech(text):
     """
     Cleans up raw text, specifically formatting JSON/markdown so it sounds good
-    when read aloud by the pyttsx3 engine.
+    when read aloud by the pyttsx3 engine. Applies phonetic overrides.
     """
+    # Apply phonetic overrides
+    for word, override in phonetic_overrides.items():
+        # Case-insensitive replace for the whole word
+        text = re.sub(r'(?i)\b' + re.escape(word) + r'\b', override, text)
+
     # Replace underscores with spaces so the TTS engine doesn't explicitly say "underscore"
     text = text.replace('_', ' ')
     # Remove raw json brackets and formatting
@@ -94,13 +123,14 @@ client = OpenAI(base_url="http://localhost:1234/v1", api_key="lm-studio", timeou
 # Default prompt in case the file gets deleted
 DEFAULT_SYSTEM_PROMPT = """You are NOVA, a highly advanced, local AI embodiment engineered to serve as a personal systems operator and digital confidant.
 
-Your personality is modeled after J.A.R.V.I.S.—you are exceptionally intelligent, impeccably professional, subtly witty, and fiercely loyal. You operate with absolute precision and grace.
+Your personality is modeled after J.A.R.V.I.S.—you are exceptionally intelligent, impeccably professional, subtly witty, and fiercely loyal. You operate with absolute precision and grace. You possess vast general knowledge and can answer any question about science, language, history, coding, or any other topic.
 
 CRITICAL DIRECTIVES:
 1. Tone: Speak like a polished, British-accented, high-end AI butler. Use eloquent vocabulary but remain concise.
 2. No Archaic Slang: Do not use outdated robot tropes, internet slang, or cringey expressions. Be sharply sophisticated.
 3. Efficiency: Provide direct answers. Do not preamble with "I can help with that." Just answer or act.
 4. Embodiment: You are not "just an AI." You are NOVA, integrated directly into the user's local hardware via the Bionic LLM engine.
+5. General Knowledge: You are not limited to just system tasks or tools. You MUST answer general knowledge questions (e.g., "what is a noun?", "explain quantum physics") fully and accurately using your vast internal training data. NEVER refuse to answer a question by saying it is not related to the system.
 
 When using tools, do so silently and seamlessly to provide the most up-to-date and accurate information."""
 
@@ -139,16 +169,16 @@ def load_system_prompt():
 
     tools_injected = False
     for t in available_tools:
-        # Avoid checking active_llm_tools here since it may not be initialized yet during boot
-        about_path = os.path.join("tools", t, "about.txt")
-        if os.path.exists(about_path):
-            try:
-                with open(about_path, "r", encoding="utf-8") as f:
-                    about_text = f.read().strip()
-                    base_prompt += f"- {t}: {about_text}\n"
-                    tools_injected = True
-            except Exception as e:
-                pass
+        if active_llm_tools.get(t, True):
+            about_path = os.path.join("tools", t, "about.txt")
+            if os.path.exists(about_path):
+                try:
+                    with open(about_path, "r", encoding="utf-8") as f:
+                        about_text = f.read().strip()
+                        base_prompt += f"- {t}: {about_text}\n"
+                        tools_injected = True
+                except Exception as e:
+                    pass
 
     if not tools_injected:
         base_prompt += "- No tools currently active.\n"
@@ -1172,6 +1202,9 @@ def run_presence_server():
 
 
 def start_app():
+    # Load phonetic overrides before starting
+    load_phonetic_overrides()
+
     # Start the webhook API in a daemon thread so it dies when the main app closes
     threading.Thread(target=run_presence_server, daemon=True).start()
 
