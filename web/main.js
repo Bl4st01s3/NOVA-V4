@@ -326,51 +326,83 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Briefing Preferences Logic (Dynamic Tools)
     async function loadDynamicTools() {
-        const toolsContainer = document.getElementById('dynamic-tools-container');
+        const briefingContainer = document.getElementById('dynamic-tools-container');
+        const aiToolsContainer = document.getElementById('ai-tools-container');
+
         try {
             const availableTools = await eel.get_available_tools()();
 
             if (availableTools.length === 0) {
-                toolsContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No tools found in /tools directory.</p>';
+                briefingContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No tools found in /tools directory.</p>';
+                if (aiToolsContainer) aiToolsContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No tools found in /tools directory.</p>';
                 return;
             }
 
-            toolsContainer.innerHTML = ''; // Clear container
+            briefingContainer.innerHTML = ''; // Clear container
+            if (aiToolsContainer) aiToolsContainer.innerHTML = '';
 
             availableTools.forEach(toolName => {
-                const label = document.createElement('label');
-                label.className = "cyber-checkbox-container";
+                const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1).replace('_', ' ');
 
-                const checkbox = document.createElement('input');
-                checkbox.type = "checkbox";
-                checkbox.id = `brief-tool-${toolName}`;
+                // 1. Briefing Checkbox (Settings Tab)
+                const briefLabel = document.createElement('label');
+                briefLabel.className = "cyber-checkbox-container";
 
-                const hexSpan = document.createElement('span');
-                hexSpan.className = "checkmark-hex";
+                const briefCheckbox = document.createElement('input');
+                briefCheckbox.type = "checkbox";
+                briefCheckbox.id = `brief-tool-${toolName}`;
 
-                // Capitalize first letter for display
-                const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+                const briefHexSpan = document.createElement('span');
+                briefHexSpan.className = "checkmark-hex";
 
-                const textSpan = document.createElement('span');
-                textSpan.innerText = `Include ${displayName} Data`;
+                const briefTextSpan = document.createElement('span');
+                briefTextSpan.innerText = `Include ${displayName} Data`;
 
-                label.appendChild(checkbox);
-                label.appendChild(hexSpan);
-                label.appendChild(textSpan);
-                toolsContainer.appendChild(label);
+                briefLabel.appendChild(briefCheckbox);
+                briefLabel.appendChild(briefHexSpan);
+                briefLabel.appendChild(briefTextSpan);
+                briefingContainer.appendChild(briefLabel);
 
-                // Load saved state or default to true
-                const savedVal = localStorage.getItem(`nova_tool_${toolName}`);
-                checkbox.checked = savedVal === null ? true : (savedVal === 'true');
+                const savedBriefVal = localStorage.getItem(`nova_briefing_tool_${toolName}`);
+                briefCheckbox.checked = savedBriefVal === null ? true : (savedBriefVal === 'true');
 
-                // Event listener
-                checkbox.addEventListener('change', () => {
-                    localStorage.setItem(`nova_tool_${toolName}`, checkbox.checked);
+                briefCheckbox.addEventListener('change', () => {
+                    localStorage.setItem(`nova_briefing_tool_${toolName}`, briefCheckbox.checked);
                     syncBriefingPrefs(availableTools);
                 });
+
+                // 2. AI Tool Checkbox (Tools Tab)
+                if (aiToolsContainer) {
+                    const aiLabel = document.createElement('label');
+                    aiLabel.className = "cyber-checkbox-container";
+
+                    const aiCheckbox = document.createElement('input');
+                    aiCheckbox.type = "checkbox";
+                    aiCheckbox.id = `ai-tool-${toolName}`;
+
+                    const aiHexSpan = document.createElement('span');
+                    aiHexSpan.className = "checkmark-hex";
+
+                    const aiTextSpan = document.createElement('span');
+                    aiTextSpan.innerText = `Enable ${displayName}`;
+
+                    aiLabel.appendChild(aiCheckbox);
+                    aiLabel.appendChild(aiHexSpan);
+                    aiLabel.appendChild(aiTextSpan);
+                    aiToolsContainer.appendChild(aiLabel);
+
+                    const savedAiVal = localStorage.getItem(`nova_ai_tool_${toolName}`);
+                    aiCheckbox.checked = savedAiVal === null ? true : (savedAiVal === 'true');
+
+                    aiCheckbox.addEventListener('change', () => {
+                        localStorage.setItem(`nova_ai_tool_${toolName}`, aiCheckbox.checked);
+                        syncAIToolsPrefs(availableTools);
+                    });
+                }
             });
 
             syncBriefingPrefs(availableTools);
+            syncAIToolsPrefs(availableTools);
 
         } catch (e) {
             console.error("Failed to load tools from backend.", e);
@@ -380,11 +412,24 @@ document.addEventListener("DOMContentLoaded", () => {
     function syncBriefingPrefs(availableTools) {
         const prefs = {};
         availableTools.forEach(toolName => {
-            prefs[toolName] = document.getElementById(`brief-tool-${toolName}`).checked;
+            const el = document.getElementById(`brief-tool-${toolName}`);
+            if (el) prefs[toolName] = el.checked;
         });
 
         try {
             eel.update_briefing_prefs(prefs)();
+        } catch(e) {}
+    }
+
+    function syncAIToolsPrefs(availableTools) {
+        const prefs = {};
+        availableTools.forEach(toolName => {
+            const el = document.getElementById(`ai-tool-${toolName}`);
+            if (el) prefs[toolName] = el.checked;
+        });
+
+        try {
+            eel.update_llm_tools_prefs(prefs)();
         } catch(e) {}
     }
 
