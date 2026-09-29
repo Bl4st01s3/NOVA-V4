@@ -28,6 +28,8 @@ import os
 import threading
 import json
 import time
+
+ACTIVE_MODEL_ID = None
 import queue
 
 # Queue to hold text tokens to bypass Eel WebSockets
@@ -269,27 +271,29 @@ def _process_llm_response_inner():
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     try:
-        # Fetch available models to auto-select the loaded one
-        models = client.models.list()
+        global ACTIVE_MODEL_ID
+        if not ACTIVE_MODEL_ID:
+            try:
+                models = client.models.list()
+                if not models.data:
+                    error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
+                    try: eel.pushAIMessage(error_msg)
+                    except: pass
+                    token_queue.put('[DONE]')
+                    try: eel.setNovaState('error')
+                    except: pass
+                    return "ERROR_NO_MODEL"
+                ACTIVE_MODEL_ID = models.data[0].id
+            except Exception:
+                ACTIVE_MODEL_ID = "local-model"
 
-        if not models.data:
-            error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
-            try: eel.pushAIMessage(error_msg)
-            except: pass
-            token_queue.put('[DONE]')
-            try: eel.setNovaState('error')
-            except: pass
-            return "ERROR_NO_MODEL"
-
-        # Select the ID of the first available model
-        model_id = models.data[0].id
-        print_and_log(f"Using model: {model_id}")
+        print_and_log(f"Using model: {ACTIVE_MODEL_ID}")
 
         tools_array = build_tools_array()
 
         # Build the payload arguments.
         kwargs = {
-            "model": model_id,
+            "model": ACTIVE_MODEL_ID,
             "messages": conversation_history,
             "temperature": 0.7,
             "stream": True
@@ -991,10 +995,16 @@ def generate_presence_message(event_type):
         return
 
     try:
-        # Fetch model
-        models = client.models.list()
-        if not models.data: return
-        model_id = models.data[0].id
+        global ACTIVE_MODEL_ID
+        if not ACTIVE_MODEL_ID:
+            try:
+                models = client.models.list()
+                if models.data:
+                    ACTIVE_MODEL_ID = models.data[0].id
+                else:
+                    return
+            except Exception:
+                return
 
         # We append directly to the main conversation history to leverage the existing KV Cache.
         # Sending a one-off temp_history array causes the LLM engine to completely wipe the KV Cache
@@ -1007,7 +1017,7 @@ def generate_presence_message(event_type):
 
         tools_array = build_tools_array()
         kwargs = {
-            "model": model_id,
+            "model": ACTIVE_MODEL_ID,
             "messages": conversation_history,
             "temperature": 0.8
         }
@@ -1157,18 +1167,22 @@ def start_app():
         try:
             print_and_log("[SYSTEM] Pinging Bionic Engine...")
             # If this succeeds, it means LM studio is responding
+            global ACTIVE_MODEL_ID
             models = client.models.list()
             if models.data:
+                ACTIVE_MODEL_ID = models.data[0].id
                 try: eel.setSystemStatus('online', 'Bionic Engine Online')
                 except: pass
                 print_and_log("[SYSTEM] Bionic Engine Online. Triggering boot sequence.")
                 try: eel.triggerBootSequence()
                 except: pass
             else:
+                ACTIVE_MODEL_ID = "local-model"
                 try: eel.setSystemStatus('error', 'No Model Loaded')
                 except: pass
                 print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded.")
         except Exception as e:
+            ACTIVE_MODEL_ID = "local-model"
             try: eel.setSystemStatus('error', 'Bionic Engine Offline')
             except: pass
             print_and_log(f"[SYSTEM] Bionic Engine Offline or Unreachable: {e}")
