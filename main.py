@@ -124,6 +124,35 @@ def load_system_prompt():
     if streamer_mode_enabled:
         base_prompt += "\n\nCRITICAL DIRECTIVE: STREAMER MODE IS CURRENTLY ENABLED. The user is currently broadcasting live to an audience. You MUST NOT disclose any personal, private, or sensitive information under ANY circumstances. Do not read out IP addresses, physical addresses, real names, passwords, or exact GPS coordinates. If a tool returns sensitive data, summarize it vaguely (e.g., 'The weather at your location is...'). Maintain extreme operational security."
 
+    # Dynamically inject tool context
+    base_prompt += "\n\nAVAILABLE TOOLS:\nYou have the following external tools available to you. Use them when requested or when appropriate to answer the user's queries:\n"
+
+    # Inline get_available_tools since it's defined later in the file
+    tools_dir = "tools"
+    available_tools = []
+    if os.path.exists(tools_dir):
+        for item in os.listdir(tools_dir):
+            item_path = os.path.join(tools_dir, item)
+            if os.path.isdir(item_path) and os.path.isfile(os.path.join(item_path, "main.py")):
+                available_tools.append(item)
+        available_tools.sort()
+
+    tools_injected = False
+    for t in available_tools:
+        # Avoid checking active_llm_tools here since it may not be initialized yet during boot
+        about_path = os.path.join("tools", t, "about.txt")
+        if os.path.exists(about_path):
+            try:
+                with open(about_path, "r", encoding="utf-8") as f:
+                    about_text = f.read().strip()
+                    base_prompt += f"- {t}: {about_text}\n"
+                    tools_injected = True
+            except Exception as e:
+                pass
+
+    if not tools_injected:
+        base_prompt += "- No tools currently active.\n"
+
     return base_prompt
 
 # Store conversation history to maintain context
@@ -399,7 +428,7 @@ def _process_llm_response_inner():
             })
 
             kwargs2 = {
-                "model": model_id,
+                "model": ACTIVE_MODEL_ID,
                 "messages": recurse_history,
                 "temperature": 0.7,
                 "stream": True

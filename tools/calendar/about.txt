@@ -1,0 +1,1 @@
+This tool checks the user's local calendar and schedule. It tells you about upcoming meetings, appointments, and events scheduled for today. Use it when the user asks what is on their agenda or what they have going on today.
