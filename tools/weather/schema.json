@@ -2,11 +2,6 @@
     "type": "function",
     "function": {
         "name": "weather",
-        "description": "Get the current local weather.",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
+        "description": "Get the current local weather."
     }
 }
