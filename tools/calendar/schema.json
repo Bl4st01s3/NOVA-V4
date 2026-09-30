@@ -2,6 +2,16 @@
     "type": "function",
     "function": {
         "name": "calendar",
-        "description": "Get the user's daily calendar schedule."
+        "description": "Get the user's daily calendar schedule.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "run_tool": {
+                    "type": "boolean",
+                    "description": "Set to true to run this tool."
+                }
+            },
+            "required": []
+        }
     }
 }

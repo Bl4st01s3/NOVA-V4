@@ -2,6 +2,16 @@
     "type": "function",
     "function": {
         "name": "nervous_system",
-        "description": "Get overnight security and environment events from the Banana Pi."
+        "description": "Get overnight security and environment events from the Banana Pi.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "run_tool": {
+                    "type": "boolean",
+                    "description": "Set to true to run this tool."
+                }
+            },
+            "required": []
+        }
     }
 }
