@@ -2,6 +2,16 @@
     "type": "function",
     "function": {
         "name": "octoprint",
-        "description": "Get the status of the 3D printer."
+        "description": "Get the status of the 3D printer.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "run_tool": {
+                    "type": "boolean",
+                    "description": "Set to true to run this tool."
+                }
+            },
+            "required": []
+        }
     }
 }

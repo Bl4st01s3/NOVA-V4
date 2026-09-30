@@ -2,6 +2,16 @@
     "type": "function",
     "function": {
         "name": "weather",
-        "description": "Get the current local weather."
+        "description": "Get the current local weather.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "run_tool": {
+                    "type": "boolean",
+                    "description": "Set to true to run this tool."
+                }
+            },
+            "required": []
+        }
     }
 }
