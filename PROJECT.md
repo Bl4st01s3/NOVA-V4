@@ -10,8 +10,6 @@ Central Hub (`main.py`): The orchestrator. Receives input, manages state, and ma
 Hub Firewall: Actively inspects outgoing tool requests. It enforces an `ALLOWED_TOOLS` whitelist and physically blocks destructive actions (like 3D printer cancellation) if strict confirmation flags are missing.
 Two-Pass ReAct Loop: If the LLM generates a tool plan, the Hub executes the tools and sends the results back to the LLM in a second prompt to prevent hallucinations, enforcing strict JSON output.
 LLM Reasoning Node: A Multi-Engine backend connected to LM Studio via the OpenAI SDK.
-Cloud (Google): Supports Google AI Studio and Vertex AI. Implements a resilient model fallback chain (`gemini-2.5-flash` -> `gemini-2.0-flash` -> `gemini-1.5-flash`) to gracefully bypass regional rollouts and 404/403 permission deprecation errors.
-Cloud (Groq): Integrated support for Groq's lightning-fast, globally free REST API running Llama-3 models.
 Local: Uses LM Studio ('Bionic') backend for 100% offline GGUF execution.
 Tool Execution Node (`tools/*/main.py`): A plugin manager that dynamically loads and executes Python scripts located in `tools/`.
 Audio Input / STT Node: Captures real-time audio using `sounddevice`. Implements Spectral Noise Reduction and Noise Gate.
@@ -51,7 +49,7 @@ Feature list:
 * Physical Stream Anomalies: Hooking Twitch events into the physical lab—such as a new subscriber causing the lab lights to flicker and an audible power-drain hum to play while NOVA announces the "unauthorized power diversion."
 * Klipper Red Alerts: If Klipper detects a thermal runaway or severe layer shift while live, NOVA interrupts the stream, flashes the lab lights red, and announces the failure in character.
 * Open 2 input pipe lines, user inputs from the microphone and system inputs for warnings and alerts and announcements
-* next_rocket_launch.py: checks an API to see when the next rocket launch is scheduled for and maybe what the mission is and information on what the mission is intended to accomplish, nasal, spaceX, BlueOrigen, ESA, Russian and Chinese space agencies (check all that could launch a rocket)
+* next_rocket_launch.py: checks an API to see when the next rocket launch is scheduled for and maybe what the mission is and information on what the mission is intended to accomplish, NASA, spaceX, BlueOrigen, ESA, Russian and Chinese space agencies (check all that could launch a rocket)
 * Time and Date
 * Weather
 * Timer
