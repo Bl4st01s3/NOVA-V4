@@ -11,6 +11,9 @@ start "LM Studio Server" cmd /c "lms server start"
 echo Waiting a few seconds for the server to spin up...
 timeout /t 5 /nobreak > NUL
 
+echo Pre-loading Llama 3.1 8B into the GPU for maximum speed...
+lms load --gpu max "llama-3.1-8b-instruct" --yes
+
 echo Checking dependencies...
 call venv\Scripts\activate.bat
 pip install -r requirements.txt -q
