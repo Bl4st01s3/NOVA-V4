@@ -1,7 +1,7 @@
 NOVA D3D Autonomous Intelligence - Project Overview
 
-What is NOVA?
-NOVA is an Agentic Loop AI assistant built for the Dark 3rd Dimension (D3D) digital fabrication and electronics lab. It is designed to run locally.
+## What is NOVA?
+NOVA is an Agentic Loop AI assistant built for the Dark 3rd Dimension (D3D) digital fabrication and electronics lab. It is designed to run completely locally on a desktop environment utilizing heavy GPU offloading.
 Nova acts as a highly efficient, hyper-polite British butler serving a chaotic engineer (inspired by Jarvis). She is dry, witty, slightly condescending, and strictly adheres to this persona.
 
 System Architecture
@@ -15,20 +15,16 @@ Tool Execution Node (`tools/*/main.py`): A plugin manager that dynamically loads
 Audio Input / STT Node: Captures real-time audio using `sounddevice`. Implements Spectral Noise Reduction and Noise Gate.
 Audio Output / TTS Node: Uses pyttsx3 to generate neural voices. Processes audio with dynamically configured DSP effects (like Futuristic or Robotic).
 
-Settings & Audio Control Center
-The Hub serves an Eel Web UI which acts as the mission control for Nova's sensory I/O.
-Hardware Routing: Dynamically queries ALSA/SoundDevice to populate literal hardware names for Microphone selection, overriding buggy generic default routing.
-Signal Processing: Provides UI sliders to manipulate variables for hardware Input Gain multipliers, VU Meter visual sensitivity, and DSP Audio Output logic.
+*   **Central Hub (`main.py`)**: The orchestrator. Receives input, manages state, and handles conversation memory. It passes requests to the LLM, parses the resulting JSON schemas, and dispatches tool execution tasks.
+*   **Asynchronous ReAct Loop**: For long-running tool execution, the Hub implements a two-pass architecture. It provides an immediate, low-latency verbal affirmation (e.g., "Right away, sir.") while the long-running task executes in the background. Once the task completes, the results are passed back to the LLM to generate the final verbal report.
+*   **LLM Reasoning Node**: Operates 100% locally via the LM Studio ('Bionic') engine. `run.bat` automatically forces the LLM (e.g., Llama 3.1 8B Q4_K_M) entirely into GPU VRAM (`--gpu max`) before launching the UI to guarantee zero TTFT latency.
+*   **Tool Execution Node (`tools/*/main.py`)**: A dynamic plugin manager. Tools are loaded autonomously on boot. The system reads `schema.json` to instruct the LLM, `about.txt` to inject tool awareness into the system prompt, and `config.json` to apply phonetic TTS overrides.
+*   **Audio Output / TTS Node**: Uses a dedicated background worker (`tts_worker`) running `pyttsx3` to generate neural voices without blocking the UI thread. Processes audio with dynamically configured DSP math (Futuristic, Robotic, or Natural effects) using `numpy` and `scipy`.
 
-Plugins & Capabilities
-Plugins are python files in `tools/` containing a `run()` function. Current and past plugins include:
-`calculator.py`: Safely evaluates math expressions using `ast`.
-`get_time.py`: Returns the system time.
-`list_tools.py`: Introspects available python plugins.
-`world_clock.py` / `time_calculator.py`: Handles timezone conversions using `pytz` and `dateutil`.
-`printer_control.py`: Controls Moonraker/Klipper 3D printers. Supports status queries, temperature setting, and two-step verified print cancellations.
-`system_control.py`: Lifecycle management. Can `stop_software`, `power_off_device`, `restart_software`, and `update_software`.
-`memory_manager.py`: Long-term persistent memory. Saves user facts and preferences to `long_term_memory.json`. The Hub automatically injects these into the LLM system prompt on every request.
+## Settings & Audio Control Center
+The Hub serves a highly interactive Web UI which acts as the mission control for Nova's sensory I/O.
+*   **Hardware Routing**: Dynamically queries `sounddevice` to populate literal hardware names for Microphone selection, overriding buggy OS defaults.
+*   **Signal Processing**: Provides UI sliders to manipulate variables for hardware Input Gain multipliers, Noise Gate thresholds, and STFT Spectral Noise Reduction (Anti-Hiss).
 
 Current Limitations & Roadmap:
 * Voice Identification (Speaker Recognition) using biometric embeddings is planned for a future update.
