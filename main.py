@@ -317,7 +317,7 @@ def build_tools_array():
 def _process_llm_response_inner():
     # Notify OBS Overlay that we are processing/talking
     try:
-        eel.setNovaState('talking')()
+        eel.setNovaState('talking')
     except Exception as e:
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
@@ -411,7 +411,7 @@ def _process_llm_response_inner():
         # Finished generating.
         if tool_name:
             print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
-            try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}")()
+            try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}")
             except: pass
 
             # Here we would actually EXECUTE the tool and send the result BACK to the LLM to summarize
