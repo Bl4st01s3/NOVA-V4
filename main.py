@@ -136,6 +136,7 @@ When using tools, do so silently and seamlessly to provide the most up-to-date a
 
 # Streamer Mode Toggle State
 streamer_mode_enabled = False
+stream_safe_tools = {}
 
 active_llm_tools = {}
 
@@ -460,23 +461,29 @@ def _process_llm_response_inner():
             try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}")
             except: pass
 
-            # Here we EXECUTE the tool and send the result BACK to the LLM to summarize
-            import subprocess
-            script_path = os.path.join("tools", tool_name, "main.py")
-            if os.path.exists(script_path):
-                python_exe = sys.executable.replace("pythonw.exe", "python.exe")
-
-                # Pass the JSON arguments to the script if the LLM provided them
-                cmd = [python_exe, script_path]
-                if tool_args_str:
-                    cmd.append(tool_args_str)
-
-                result = subprocess.run(cmd, capture_output=True, text=True)
-                tool_output = result.stdout.strip()
-                if result.stderr.strip():
-                    tool_output += f"\nError Output: {result.stderr.strip()}"
+            # Check Streamer Mode locks
+            is_tool_safe = stream_safe_tools.get(tool_name, False)
+            if streamer_mode_enabled and not is_tool_safe:
+                tool_output = f"SYSTEM ERROR: Execution of {tool_name} is BLOCKED because Streamer Mode is active and this tool is not marked as Stream Safe. Tell the user you cannot perform this action while live."
+                print_and_log(f"[SYSTEM] BLOCKED tool {tool_name} due to Streamer Mode.")
             else:
-                tool_output = f"Error: Tool {tool_name} not found."
+                # Here we EXECUTE the tool and send the result BACK to the LLM to summarize
+                import subprocess
+                script_path = os.path.join("tools", tool_name, "main.py")
+                if os.path.exists(script_path):
+                    python_exe = sys.executable.replace("pythonw.exe", "python.exe")
+
+                    # Pass the JSON arguments to the script if the LLM provided them
+                    cmd = [python_exe, script_path]
+                    if tool_args_str:
+                        cmd.append(tool_args_str)
+
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    tool_output = result.stdout.strip()
+                    if result.stderr.strip():
+                        tool_output += f"\nError Output: {result.stderr.strip()}"
+                else:
+                    tool_output = f"Error: Tool {tool_name} not found."
 
             print_and_log(f"[SYSTEM] Tool result: {tool_output}")
 
@@ -776,6 +783,42 @@ briefing_prefs = {
     "printer": True,
     "calendar": False
 }
+
+@eel.expose
+def set_tool_stream_safe(tool_name, is_safe):
+    global stream_safe_tools
+    stream_safe_tools[tool_name] = is_safe
+    print_and_log(f"[SYSTEM] Stream Safe for {tool_name} set to {is_safe}")
+    try:
+        with open("stream_safe_tools.json", "w") as f:
+            json.dump(stream_safe_tools, f)
+    except Exception as e:
+        print_and_log(f"[ERROR] Failed to save stream safe tools: {e}")
+
+@eel.expose
+def get_tool_config(tool_name):
+    """Returns the config file for a given tool as a dictionary (or None if none exists)."""
+    config_path = os.path.join("tools", tool_name, "config.json")
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            print_and_log(f"[ERROR] Could not load config for {tool_name}: {e}")
+    return None
+
+@eel.expose
+def save_tool_config(tool_name, new_config):
+    """Saves a JSON dictionary back to the tool's config.json file."""
+    config_path = os.path.join("tools", tool_name, "config.json")
+    try:
+        with open(config_path, "w", encoding='utf-8') as f:
+            json.dump(new_config, f, indent=4)
+        print_and_log(f"[SYSTEM] Saved updated config for {tool_name}.")
+        return True
+    except Exception as e:
+        print_and_log(f"[ERROR] Could not save config for {tool_name}: {e}")
+        return False
 
 @eel.expose
 def get_available_tools():
@@ -1272,6 +1315,15 @@ def check_single_instance():
 def start_app():
     # Check for existing instances immediately
     check_single_instance()
+
+    # Load stream safe locks
+    global stream_safe_tools
+    if os.path.exists("stream_safe_tools.json"):
+        try:
+            with open("stream_safe_tools.json", "r") as f:
+                stream_safe_tools = json.load(f)
+        except:
+            stream_safe_tools = {}
 
     # Load phonetic overrides before starting
     load_phonetic_overrides()
