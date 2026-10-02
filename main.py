@@ -192,6 +192,19 @@ def load_system_prompt():
     if not tools_injected:
         base_prompt += "- No tools currently active.\n"
 
+    # Inject long-term memory facts if the file exists
+    memory_file = "long_term_memory.json"
+    if os.path.exists(memory_file):
+        try:
+            with open(memory_file, "r", encoding="utf-8") as f:
+                memory_facts = json.load(f)
+                if memory_facts:
+                    base_prompt += "\n\nUSER CONTEXT & FACTS:\nYou have previously saved the following facts about the user. Incorporate this knowledge seamlessly into your responses:\n"
+                    for fact in memory_facts:
+                        base_prompt += f"- {fact}\n"
+        except Exception as e:
+            log_error(f"Failed to load long_term_memory.json into prompt: {e}")
+
     return base_prompt
 
 # Store conversation history to maintain context
@@ -414,14 +427,21 @@ def _process_llm_response_inner():
             try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}")
             except: pass
 
-            # Here we would actually EXECUTE the tool and send the result BACK to the LLM to summarize
-            # For now, let's just log it and append a mock response.
+            # Here we EXECUTE the tool and send the result BACK to the LLM to summarize
             import subprocess
             script_path = os.path.join("tools", tool_name, "main.py")
             if os.path.exists(script_path):
                 python_exe = sys.executable.replace("pythonw.exe", "python.exe")
-                result = subprocess.run([python_exe, script_path], capture_output=True, text=True)
+
+                # Pass the JSON arguments to the script if the LLM provided them
+                cmd = [python_exe, script_path]
+                if tool_args_str:
+                    cmd.append(tool_args_str)
+
+                result = subprocess.run(cmd, capture_output=True, text=True)
                 tool_output = result.stdout.strip()
+                if result.stderr.strip():
+                    tool_output += f"\nError Output: {result.stderr.strip()}"
             else:
                 tool_output = f"Error: Tool {tool_name} not found."
 
