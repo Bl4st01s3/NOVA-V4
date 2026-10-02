@@ -25,6 +25,27 @@ document.addEventListener("DOMContentLoaded", () => {
     // Global reference to the currently streaming message div
     window.window.activeStreamingContentDiv = null;
 
+    // Load persistent chat history on boot
+    async function loadChatHistory() {
+        try {
+            const history = await eel.get_chat_history()();
+            if (history && history.length > 0) {
+                history.forEach(msg => {
+                    // Skip tool calls/responses in the UI to keep it clean, only show user/assistant
+                    if (msg.role === 'user' || msg.role === 'assistant') {
+                        if (msg.content) {
+                            appendMessage(msg.role, msg.content);
+                        }
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Failed to load chat history:", e);
+        }
+    }
+
+    setTimeout(loadChatHistory, 500);
+
     async function sendMessage() {
         const text = userInput.value.trim();
         if (!text) return;

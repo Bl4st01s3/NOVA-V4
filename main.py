@@ -207,10 +207,42 @@ def load_system_prompt():
 
     return base_prompt
 
+CHAT_HISTORY_FILE = "chat_history.json"
+
+def load_chat_history():
+    """Loads previous chat history from disk to persist across sessions."""
+    history = []
+    if os.path.exists(CHAT_HISTORY_FILE):
+        try:
+            with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception as e:
+            log_error(f"Failed to load chat history: {e}")
+
+    # Always ensure the first message is the up-to-date system prompt
+    if len(history) > 0 and history[0].get("role") == "system":
+        history[0]["content"] = load_system_prompt()
+    else:
+        history.insert(0, {"role": "system", "content": load_system_prompt()})
+
+    return history
+
+def save_chat_history():
+    """Saves the current chat history to disk."""
+    try:
+        with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(conversation_history, f, indent=4)
+    except Exception as e:
+        log_error(f"Failed to save chat history: {e}")
+
 # Store conversation history to maintain context
-conversation_history = [
-    {"role": "system", "content": load_system_prompt()}
-]
+conversation_history = load_chat_history()
+
+@eel.expose
+def get_chat_history():
+    """Returns the chat history to the UI on load, excluding the system prompt."""
+    # Return everything except the first message (system prompt)
+    return conversation_history[1:] if len(conversation_history) > 1 else []
 
 @eel.expose
 def set_streamer_mode(enabled):
@@ -288,6 +320,7 @@ def send_message_to_nova(user_text):
         print_and_log(f"User: {user_text}")
         # Append normal user message to history immediately so the UI is in sync
         conversation_history.append({"role": "user", "content": user_text})
+        save_chat_history()
 
     # Spawn the heavy LLM lifting into a background greenlet thread
     eel.spawn(process_llm_response)
@@ -522,6 +555,7 @@ def _process_llm_response_inner():
         if ai_text.endswith('"'):
             ai_text = ai_text[:-1]
         conversation_history.append({"role": "assistant", "content": ai_text})
+        save_chat_history()
         print_and_log(f"NOVA: {ai_text}")
 
         # Notify frontend JS that the stream is completely done
@@ -1221,7 +1255,24 @@ def run_presence_server():
     server.serve_forever()
 
 
+def check_single_instance():
+    """Ensures only one instance of NOVA runs at a time using a local socket binding."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # Bind to a completely obscure high port locally
+        s.bind(("127.0.0.1", 54320))
+        # Keep the socket open and stored in a global so it doesn't garbage collect
+        global _lock_socket
+        _lock_socket = s
+    except socket.error as e:
+        print("NOVA is already running! Exiting this instance to prevent conflicts.")
+        sys.exit(1)
+
 def start_app():
+    # Check for existing instances immediately
+    check_single_instance()
+
     # Load phonetic overrides before starting
     load_phonetic_overrides()
 
