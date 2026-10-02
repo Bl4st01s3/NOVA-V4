@@ -14,7 +14,6 @@ document.addEventListener("DOMContentLoaded", () => {
             const tabId = btn.getAttribute('data-tab');
             document.getElementById(tabId).classList.add('active');
         });
-    });
 
     // Chat Logic
     const chatContainer = document.getElementById('chat-container');
@@ -849,6 +848,7 @@ function pushAIMessage(text) {
 }
 
 eel.expose(addActivityLog);
+
 function addActivityLog(type, message) {
     const logContainer = document.getElementById('log-container');
     if (!logContainer) return;
@@ -860,185 +860,386 @@ function addActivityLog(type, message) {
     const now = new Date();
     const timeString = now.toLocaleTimeString([], { hour12: false });
 
-    // Format the text
-    logEntry.innerHTML = `<span class="log-time">[${timeString}]</span> ${message}`;
-
+    logEntry.innerHTML = `<span class="log-time">[${timeString}]</span> <span class="log-msg">${message}</span>`;
     logContainer.appendChild(logEntry);
-
-    // Auto scroll log to bottom
     logContainer.scrollTop = logContainer.scrollHeight;
 }
-eel.expose(syncStreamerModeUI, "sync_streamer_mode_ui");
-function syncStreamerModeUI(isEnabled) {
-    const streamerModeToggle = document.getElementById('streamer-mode-toggle');
-    if (streamerModeToggle) {
-        streamerModeToggle.checked = isEnabled;
-        localStorage.setItem('nova_streamer_mode', isEnabled);
 
-        // Add a visible notification log that the system state changed
-        const stateText = isEnabled ? "ENABLED (OBS Detected)" : "DISABLED (OBS Closed)";
-        addActivityLog('system', `Streamer Mode automatically ${stateText}.`);
+
+// --- Dynamic Config Modal Logic ---
+let currentConfigTool = null;
+let currentConfigData = null;
+
+// Helper to generate spreadsheet columns A-Z, AA-ZZ
+function getSpreadsheetColumns() {
+    const cols = [];
+    for (let i = 65; i <= 90; i++) cols.push(String.fromCharCode(i));
+    for (let i = 65; i <= 90; i++) {
+        for (let j = 65; j <= 90; j++) {
+            cols.push(String.fromCharCode(i) + String.fromCharCode(j));
+        }
     }
+    return cols;
+}
+const spreadsheetColumns = getSpreadsheetColumns();
+const dataTypes = ["string", "int", "date", "boolean", "formula"];
+
+// Check if the overall config has File_Type == "Spreadsheet" anywhere at the root
+function isSpreadsheetContext() {
+    if (!currentConfigData) return false;
+    // Search one level deep for File_Type
+    for (const key in currentConfigData) {
+        if (currentConfigData[key] && typeof currentConfigData[key] === 'object') {
+            if (currentConfigData[key]["File_Type"] && currentConfigData[key]["File_Type"].toLowerCase() === "spreadsheet") {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
-eel.expose(window.streamAIToken, "streamAIToken");
-eel.expose(window.streamAIComplete, "streamAIComplete");
+// Creates an individual input field based on smart logic
+function createInputForValue(key, value, isSchemaBlock = false) {
+    let inputElement;
 
-eel.expose(setSystemStatus);
-function setSystemStatus(state, msg) {
-    const statusText = document.getElementById('system-status-text');
-    const statusDot = document.getElementById('system-status-dot');
-    if (!statusText || !statusDot) return;
+    const isSpreadsheet = isSpreadsheetContext();
 
-    statusText.innerText = msg;
-
-    if (state === 'online') {
-        statusText.style.color = 'var(--cyan)';
-        statusDot.style.backgroundColor = 'var(--cyan)';
-        statusDot.style.boxShadow = '0 0 10px var(--cyan)';
-        statusDot.style.animation = 'blink 2s infinite';
-    } else if (state === 'error') {
-        statusText.style.color = 'red';
-        statusDot.style.backgroundColor = 'red';
-        statusDot.style.boxShadow = '0 0 10px red';
-        statusDot.style.animation = 'none'; // Solid red for error
+    // Smart Dropdowns
+    if (key === "Column" && isSpreadsheet) {
+        inputElement = document.createElement('select');
+        inputElement.className = "cyber-input config-input-select";
+        spreadsheetColumns.forEach(col => {
+            const opt = document.createElement('option');
+            opt.value = col;
+            opt.innerText = col;
+            if (col === value) opt.selected = true;
+            inputElement.appendChild(opt);
+        });
+    }
+    else if (key === "Type" && isSchemaBlock) {
+        inputElement = document.createElement('select');
+        inputElement.className = "cyber-input config-input-select";
+        dataTypes.forEach(dt => {
+            const opt = document.createElement('option');
+            opt.value = dt;
+            opt.innerText = dt;
+            if (dt === value) opt.selected = true;
+            inputElement.appendChild(opt);
+        });
+    }
+    // Standard Inputs
+    else if (typeof value === "boolean") {
+        inputElement = document.createElement('input');
+        inputElement.type = "checkbox";
+        inputElement.checked = value;
+        inputElement.className = "config-input-boolean";
+    } else if (typeof value === "number") {
+        inputElement = document.createElement('input');
+        inputElement.type = "number";
+        inputElement.value = value;
+        inputElement.className = "cyber-input config-input-number";
     } else {
-        // Checking or idle
-        statusText.style.color = '#888';
-        statusDot.style.backgroundColor = '#888';
-        statusDot.style.boxShadow = 'none';
-        statusDot.style.animation = 'blink 1s infinite';
+        inputElement = document.createElement('input');
+        inputElement.type = "text";
+        inputElement.value = value || "";
+        inputElement.className = "cyber-input config-input-text";
     }
+
+    inputElement.dataset.keyname = key;
+    return inputElement;
 }
 
+// Renders a generic object (like Cloud_File_Path)
+function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
+    const container = document.createElement('div');
+    container.className = "generic-obj-container";
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.gap = "10px";
 
-    // --- Dynamic Config Modal Logic ---
-    let currentConfigTool = null;
-    let currentConfigData = null;
-
-    function createInputForValue(keyPath, value) {
+    for (const key in obj) {
         const wrapper = document.createElement('div');
         wrapper.className = "form-group";
-        wrapper.style.marginBottom = "15px";
+        wrapper.style.display = "flex";
+        wrapper.style.alignItems = "center";
+        wrapper.style.gap = "15px";
 
         const label = document.createElement('label');
-        label.innerText = keyPath.replace(/_/g, ' ');
-        label.style.display = "block";
-        label.style.marginBottom = "5px";
+        label.innerText = key.replace(/_/g, ' ');
         label.style.color = "var(--neon-cyan)";
         label.style.fontSize = "12px";
+        label.style.width = "150px"; // Fixed width for alignment
+
+        const input = createInputForValue(key, obj[key], isSchemaBlock);
+        input.style.flex = "1";
+
         wrapper.appendChild(label);
+        wrapper.appendChild(input);
+        container.appendChild(wrapper);
+    }
+    parentElement.appendChild(container);
+}
 
-        let inputElement;
+// Renders the highly dynamic "schema" array/object where keys are column names
+function renderSchemaBlock(schemaObj, parentElement) {
+    const listContainer = document.createElement('div');
+    listContainer.className = "schema-list-container";
+    listContainer.style.display = "flex";
+    listContainer.style.flexDirection = "column";
+    listContainer.style.gap = "15px";
 
-        if (typeof value === "boolean") {
-            inputElement = document.createElement('input');
-            inputElement.type = "checkbox";
-            inputElement.checked = value;
-            inputElement.className = "config-input-boolean";
-        } else if (typeof value === "number") {
-            inputElement = document.createElement('input');
-            inputElement.type = "number";
-            inputElement.value = value;
-            inputElement.className = "cyber-input config-input-number";
+    for (const columnName in schemaObj) {
+        listContainer.appendChild(createSchemaRow(columnName, schemaObj[columnName]));
+    }
+
+    parentElement.appendChild(listContainer);
+
+    // Add New Row Button
+    const addBtn = document.createElement('button');
+    addBtn.className = "cyber-btn";
+    addBtn.innerText = "+ ADD COLUMN DEFINITION";
+    addBtn.style.marginTop = "15px";
+    addBtn.style.alignSelf = "flex-start";
+    addBtn.onclick = () => {
+        const newRow = createSchemaRow("New_Column", { "Column": "A", "Type": "string" });
+        listContainer.appendChild(newRow);
+    };
+    parentElement.appendChild(addBtn);
+}
+
+function createSchemaRow(columnName, columnData) {
+    const row = document.createElement('div');
+    row.className = "schema-row";
+    row.style.border = "1px solid rgba(255, 0, 127, 0.4)";
+    row.style.padding = "10px";
+    row.style.borderRadius = "5px";
+    row.style.background = "rgba(0,0,0,0.5)";
+
+    // Title Row (Editable Key Name)
+    const headerRow = document.createElement('div');
+    headerRow.style.display = "flex";
+    headerRow.style.justifyContent = "space-between";
+    headerRow.style.marginBottom = "10px";
+
+    const nameInput = document.createElement('input');
+    nameInput.type = "text";
+    nameInput.value = columnName;
+    nameInput.className = "cyber-input schema-key-name";
+    nameInput.style.fontWeight = "bold";
+    nameInput.style.color = "#ff007f";
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.innerText = "X";
+    deleteBtn.style.background = "#ff0000";
+    deleteBtn.style.color = "#fff";
+    deleteBtn.style.border = "none";
+    deleteBtn.style.cursor = "pointer";
+    deleteBtn.style.padding = "2px 8px";
+    deleteBtn.onclick = () => row.remove();
+
+    headerRow.appendChild(nameInput);
+    headerRow.appendChild(deleteBtn);
+    row.appendChild(headerRow);
+
+    // Data Row
+    const dataContainer = document.createElement('div');
+    dataContainer.className = "schema-data-container";
+    renderGenericObject(columnData, dataContainer, true);
+    row.appendChild(dataContainer);
+
+    return row;
+}
+
+function renderConfigFields(configObj, parentElement) {
+    for (const key in configObj) {
+        const value = configObj[key];
+
+        const sectionHeader = document.createElement('h4');
+        sectionHeader.innerText = key.replace(/_/g, ' ').toUpperCase();
+        sectionHeader.style.marginTop = "20px";
+        sectionHeader.style.marginBottom = "10px";
+        sectionHeader.style.borderBottom = "1px solid rgba(0, 243, 255, 0.3)";
+        sectionHeader.style.color = "var(--neon-cyan)";
+        parentElement.appendChild(sectionHeader);
+
+        if (key.toLowerCase() === "schema") {
+            renderSchemaBlock(value, parentElement);
+        } else if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+            renderGenericObject(value, parentElement);
         } else {
-            inputElement = document.createElement('input');
-            inputElement.type = "text";
-            inputElement.value = value || "";
-            inputElement.className = "cyber-input config-input-text";
-        }
-
-        inputElement.dataset.keypath = keyPath;
-        wrapper.appendChild(inputElement);
-        return wrapper;
-    }
-
-    function renderConfigFields(configObj, parentElement, parentKey = "") {
-        for (const key in configObj) {
-            const currentPath = parentKey ? `${parentKey}.${key}` : key;
-            const value = configObj[key];
-
-            if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-                // It's a nested object (like Cloud_File_Path)
-                const sectionHeader = document.createElement('h4');
-                sectionHeader.innerText = key.replace(/_/g, ' ').toUpperCase();
-                sectionHeader.style.marginTop = "20px";
-                sectionHeader.style.marginBottom = "10px";
-                sectionHeader.style.borderBottom = "1px solid rgba(255,0,127,0.3)";
-                sectionHeader.style.color = "#ff007f";
-                parentElement.appendChild(sectionHeader);
-
-                // Recurse
-                renderConfigFields(value, parentElement, currentPath);
-            } else {
-                // Primitive value
-                const field = createInputForValue(currentPath, value);
-                parentElement.appendChild(field);
-            }
+            // Root level primitives (fallback)
+            const field = document.createElement('div');
+            field.className = "generic-obj-container";
+            const wrapper = document.createElement('div');
+            wrapper.className = "form-group";
+            wrapper.style.display = "flex";
+            wrapper.style.alignItems = "center";
+            wrapper.style.gap = "15px";
+            const label = document.createElement('label');
+            label.innerText = key;
+            label.style.color = "var(--neon-cyan)";
+            label.style.width = "150px";
+            const input = createInputForValue(key, value);
+            wrapper.appendChild(label);
+            wrapper.appendChild(input);
+            field.appendChild(wrapper);
+            parentElement.appendChild(field);
         }
     }
+}
 
-    function openConfigModal(toolName, configData) {
-        currentConfigTool = toolName;
-        currentConfigData = configData;
+function openConfigModal(toolName, configData) {
+    currentConfigTool = toolName;
+    currentConfigData = configData;
 
-        document.getElementById('tool-config-title').innerText = `Configure Tool: ${toolName.toUpperCase()}`;
-        const body = document.getElementById('tool-config-body');
-        body.innerHTML = ''; // clear old
+    document.getElementById('tool-config-title').innerText = `Configure Tool: ${toolName.toUpperCase()}`;
+    const body = document.getElementById('tool-config-body');
+    body.innerHTML = ''; // clear old
 
-        renderConfigFields(configData, body);
+    renderConfigFields(configData, body);
 
-        document.getElementById('tool-config-modal').style.display = 'flex';
+    document.getElementById('tool-config-modal').style.display = 'flex';
+}
+
+// Ensure the UI has access to it globally
+window.openConfigModal = openConfigModal;
+
+// Save button logic for Config Modal
+document.getElementById('save-config-btn').addEventListener('click', async () => {
+    if (!currentConfigTool || !currentConfigData) return;
+
+    let newConfig = {};
+
+    // Reconstruction from DOM
+    const body = document.getElementById('tool-config-body');
+
+    // Loop through all major sections (h4 tags denote sections)
+    const sections = body.querySelectorAll('h4');
+    let currentSectionNode = body.firstElementChild;
+
+    while (currentSectionNode) {
+        if (currentSectionNode.tagName === 'H4') {
+            // Find original key by case-insensitive matching
+            const displayKey = currentSectionNode.innerText.toLowerCase().replace(/ /g, '_');
+            let realKey = Object.keys(currentConfigData).find(k => k.toLowerCase() === displayKey) || currentSectionNode.innerText.replace(/ /g, '_');
+
+            const dataContainer = currentSectionNode.nextElementSibling;
+
+            if (dataContainer.classList.contains('schema-list-container')) {
+                // It's a schema block
+                newConfig[realKey] = {};
+                const rows = dataContainer.querySelectorAll('.schema-row');
+                rows.forEach(row => {
+                    const keyName = row.querySelector('.schema-key-name').value.trim();
+                    if (!keyName) return; // Skip empty keys
+
+                    const rowData = {};
+                    const inputs = row.querySelectorAll('.schema-data-container input, .schema-data-container select');
+                    inputs.forEach(input => {
+                        const subKey = input.dataset.keyname;
+                        let val = input.value;
+                        if (input.type === 'checkbox') val = input.checked;
+                        if (input.type === 'number') val = parseFloat(input.value);
+                        rowData[subKey] = val;
+                    });
+                    newConfig[realKey][keyName] = rowData;
+                });
+            } else if (dataContainer.classList.contains('generic-obj-container')) {
+                // It's a standard object block
+                newConfig[realKey] = {};
+                const inputs = dataContainer.querySelectorAll('input, select');
+                inputs.forEach(input => {
+                    const subKey = input.dataset.keyname;
+                    let val = input.value;
+                    if (input.type === 'checkbox') val = input.checked;
+                    if (input.type === 'number') val = parseFloat(input.value);
+                    newConfig[realKey][subKey] = val;
+                });
+            } else {
+                 // It's a root primitive (fallback logic if next sibling is a generic wrapper)
+                 if(dataContainer.classList.contains('form-group')){
+                     const input = dataContainer.querySelector('input, select');
+                     if(input) {
+                         let val = input.value;
+                         if (input.type === 'checkbox') val = input.checked;
+                         if (input.type === 'number') val = parseFloat(input.value);
+                         newConfig[realKey] = val;
+                     }
+                 }
+            }
+        }
+        currentSectionNode = currentSectionNode.nextElementSibling;
     }
 
-    // Save button logic for Config Modal
-    document.getElementById('save-config-btn').addEventListener('click', async () => {
-        if (!currentConfigTool || !currentConfigData) return;
+    // Deep merge with currentConfigData to preserve fields that weren't rendered (just in case)
+    const finalConfig = Object.assign({}, currentConfigData, newConfig);
 
-        // Deep copy the original data structure
-        let updatedConfig = JSON.parse(JSON.stringify(currentConfigData));
+    // Send to backend
+    const success = await eel.save_tool_config(currentConfigTool, finalConfig)();
+    if (success) {
+        document.getElementById('tool-config-modal').style.display = 'none';
+        // Alert user visually
+        const btn = document.getElementById('save-config-btn');
+        const originalText = btn.innerText;
+        btn.innerText = "SAVED!";
+        btn.style.color = "#0f0";
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.style.color = "";
+        }, 2000);
+    } else {
+        alert("Failed to save configuration.");
+    }
+});
 
-        // Helper to set nested value by dot path
-        const setNestedValue = (obj, path, val) => {
-            const keys = path.split('.');
-            let current = obj;
-            for (let i = 0; i < keys.length - 1; i++) {
-                current = current[keys[i]];
-            }
-            current[keys[keys.length - 1]] = val;
-        };
+});
 
-        // Gather all inputs
-        const body = document.getElementById('tool-config-body');
-        const inputs = body.querySelectorAll('input');
 
-        inputs.forEach(input => {
-            const path = input.dataset.keypath;
-            let val;
-            if (input.type === 'checkbox') {
-                val = input.checked;
-            } else if (input.type === 'number') {
-                val = parseFloat(input.value);
-            } else {
-                val = input.value;
-            }
-            setNestedValue(updatedConfig, path, val);
-        });
+eel.expose(streamAIToken);
+function streamAIToken(token) {
+    const aiMessages = document.querySelectorAll('.ai-message');
+    if (aiMessages.length > 0) {
+        const lastMessage = aiMessages[aiMessages.length - 1];
+        lastMessage.innerHTML += token.replace(/\n/g, '<br>');
+        const chatBox = document.getElementById('chat-history');
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+}
 
-        // Send to backend
-        const success = await eel.save_tool_config(currentConfigTool, updatedConfig)();
-        if (success) {
-            document.getElementById('tool-config-modal').style.display = 'none';
-            // Alert user visually
-            const btn = document.getElementById('save-config-btn');
-            const originalText = btn.innerText;
-            btn.innerText = "SAVED!";
-            btn.style.color = "#0f0";
-            setTimeout(() => {
-                btn.innerText = originalText;
-                btn.style.color = "";
-            }, 2000);
-        } else {
-            alert("Failed to save configuration.");
+eel.expose(streamAIComplete);
+function streamAIComplete() {
+    isProcessing = false;
+    document.getElementById('input-text').disabled = false;
+    document.getElementById('input-text').focus();
+}
+
+eel.expose(syncStreamerModeUI);
+function syncStreamerModeUI(isEnabled, safeTools) {
+    const checkbox = document.getElementById('streamer-mode-toggle');
+    if (checkbox) checkbox.checked = isEnabled;
+
+    // safeTools is a list of tool names that are safe
+    // If we have a list of tools rendered, we should update their checkboxes
+    const toolItems = document.querySelectorAll('.tool-item');
+    toolItems.forEach(item => {
+        const toolName = item.dataset.toolname;
+        const toggle = item.querySelector('.stream-safe-toggle');
+        if (toggle && toolName) {
+            toggle.checked = safeTools.includes(toolName);
         }
     });
+}
+
+eel.expose(setSystemStatus);
+function setSystemStatus(status) {
+    const orb = document.querySelector('.nova-orb');
+    if (!orb) return;
+
+    if (status === "idle") {
+        orb.style.boxShadow = "0 0 20px var(--neon-cyan), inset 0 0 20px var(--neon-cyan)";
+    } else if (status === "thinking" || status === "talking") {
+        orb.style.boxShadow = "0 0 30px var(--neon-purple), inset 0 0 30px var(--neon-purple)";
+    } else if (status === "error") {
+        orb.style.boxShadow = "0 0 20px #ff0000, inset 0 0 20px #ff0000";
+    }
+}

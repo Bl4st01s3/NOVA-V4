@@ -2,7 +2,7 @@
   "Cloud_File_Path": {
      "Google_Drive_File_Path" : "",
      "Access_Key": "",
-     "File_Type": "",
+     "File_Type": "Spreadsheet",
      "Time_Out": 5,
      "Max_Retries": 2,
      "Backup_Interval": 168
