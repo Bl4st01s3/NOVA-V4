@@ -36,7 +36,7 @@ NOVA is transitioning to a hands-free, voice-activated interface. To prevent bac
 ### Future Roadmap & Planned Tools
 *   **Time / World Clock**: Handle timezone conversions using `pytz` and `dateutil`.
 *   **Advanced Printer Control**: Full Moonraker/Klipper/OctoPrint integration to read print progress, query hotend/bed temps, and ping LDO BoxTurtle MMUs for filament jams. Includes two-step verified print cancellations.
-*   **System Control**: Lifecycle management to `stop_software`, `power_off_device`, `restart_software`, and perform `update_software` via `git`.
+*   **System Control**: Lifecycle management to `stop_software`, `power_off_device`, `restart_software`, perform `update_software` via `git`, and trigger keyboard macros for `cut`, `copy`, and `paste`.
 *   **WLED Control**: Trigger an "Aesthetic Override" to instantly set the lab to the default cyan and purple dark mode.
 *   **Audio & Media**: Voice-controlled Spotify playback, volume control, and quick-starting specific playlists.
 *   **Digital Routing**: Trigger CyberSync Command Console macros for switching PC displays or muting microphones.
