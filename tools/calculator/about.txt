@@ -1,0 +1,1 @@
+This tool safely evaluates mathematical expressions. Use it whenever the user asks you to perform math, calculate values, or solve an equation. Do not attempt to guess math answers yourself; always use this tool to calculate it correctly.

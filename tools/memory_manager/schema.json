@@ -1,0 +1,22 @@
+{
+    "type": "function",
+    "function": {
+        "name": "memory_manager",
+        "description": "Manage the user's long-term memory by adding or removing facts and preferences.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "description": "The action to perform: 'add' or 'remove'.",
+                    "enum": ["add", "remove"]
+                },
+                "fact": {
+                    "type": "string",
+                    "description": "The concise fact or preference to add or remove (e.g., 'The user's favorite color is blue')."
+                }
+            },
+            "required": ["action", "fact"]
+        }
+    }
+}

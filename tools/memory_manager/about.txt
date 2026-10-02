@@ -1,0 +1,1 @@
+This tool manages a persistent memory file that injects facts directly into your core system prompt on boot. Use it proactively whenever the user mentions a personal preference, a fact about their life, or asks you to remember something specific for the future. You can also remove facts if the user changes their mind or corrects you.
