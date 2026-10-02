@@ -36,7 +36,7 @@ NOVA is transitioning to a hands-free, voice-activated interface. To prevent bac
 ### Future Roadmap & Planned Tools
 *   **Time / World Clock**: Handle timezone conversions using `pytz` and `dateutil`.
 *   **Advanced Printer Control**: Full Moonraker/Klipper/OctoPrint integration to read print progress, query hotend/bed temps, and ping LDO BoxTurtle MMUs for filament jams. Includes two-step verified print cancellations.
-*   **System Control**: Lifecycle management to `stop_software`, `power_off_device`, `restart_software`, and perform `update_software` via `git`.
+*   **System Control**: Lifecycle management to `stop_software`, `power_off_device`, `restart_software`, perform `update_software` via `git`, and trigger keyboard macros for `cut`, `copy`, and `paste`.
 *   **WLED Control**: Trigger an "Aesthetic Override" to instantly set the lab to the default cyan and purple dark mode.
 *   **Audio & Media**: Voice-controlled Spotify playback, volume control, and quick-starting specific playlists.
 *   **Digital Routing**: Trigger CyberSync Command Console macros for switching PC displays or muting microphones.
@@ -51,6 +51,7 @@ NOVA is transitioning to a hands-free, voice-activated interface. To prevent bac
 *   **Rocket Launch Tracker**: Check APIs for SpaceX, Blue Origin, ESA, etc., to announce upcoming mission schedules and goals.
 *   **Dual Input Pipelines**: Maintain separate processing queues for user microphone input vs. automated system alerts/warnings.
 *   **Automated 3D Model Publisher**: A watcher tool for a specific directory where 3D models, pictures, and markdown descriptions can be dropped. NOVA will automatically process the folder and post the assets to 3D printing distribution sites (Printables, MakerWorld, Thingiverse, etc.).
+*   **Document Reader**: An integration where NOVA can be pointed at a file (.txt, .pdf, Word document) to read the extracted text out loud.
 
 ### System Engineering Tasks
 *   **Persistent UI Chat History**: Sync the conversation array to a local file so the chat history is visually maintained in the UI between restarts/cycles.
