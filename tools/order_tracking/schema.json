@@ -1,0 +1,27 @@
+{
+  "name": "order_tracking",
+  "description": "Reads, adds, and updates orders in a synchronized Google Sheet and local Excel file.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "The action to perform: 'read', 'add', or 'update'.",
+        "enum": ["read", "add", "update"]
+      },
+      "read_filters": {
+         "type": "object",
+         "description": "Filters for the 'read' action. e.g. {'Delivered': false} to find undelivered items."
+      },
+      "new_order": {
+         "type": "object",
+         "description": "The order data for the 'add' action. Keys must match the schema (e.g. 'Item', 'Retailer', 'Order Date')."
+      },
+      "update_data": {
+         "type": "object",
+         "description": "The order data for the 'update' action. Must contain 'Order_Number' or 'Item' to identify the row, and the fields to update."
+      }
+    },
+    "required": ["action"]
+  }
+}

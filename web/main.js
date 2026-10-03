@@ -351,6 +351,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         try {
             const availableTools = await eel.get_available_tools()();
+            const safeToolsMap = await eel.get_stream_safe_tools()() || {};
 
             if (availableTools.length === 0) {
                 briefingContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No tools found in /tools directory.</p>';
@@ -445,12 +446,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     const safeCheckbox = document.createElement('input');
                     safeCheckbox.type = "checkbox";
 
-                    // Fetch existing lock state from localStorage
-                    const isSafe = localStorage.getItem(`nova_stream_safe_${toolName}`) === 'true';
+                    // Use backend state instead of localStorage
+                    const isSafe = !!safeToolsMap[toolName];
                     safeCheckbox.checked = isSafe;
-
-                    // Sync initial state to backend
-                    try { eel.set_tool_stream_safe(toolName, isSafe)(); } catch(e){}
 
                     const safeHexSpan = document.createElement('span');
                     safeHexSpan.className = "checkmark-hex";
@@ -466,7 +464,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     rightCol.appendChild(safeLabel);
 
                     safeCheckbox.addEventListener('change', () => {
-                        localStorage.setItem(`nova_stream_safe_${toolName}`, safeCheckbox.checked);
                         try { eel.set_tool_stream_safe(toolName, safeCheckbox.checked)(); } catch(e) {}
                     });
 
@@ -636,12 +633,35 @@ document.addEventListener("DOMContentLoaded", () => {
                 voiceSelect.appendChild(opt);
             });
 
-            const savedVoice = localStorage.getItem('nova_tts_voice');
-            if (savedVoice !== null) {
-                voiceSelect.value = savedVoice;
-                eel.set_tts_voice(savedVoice)();
+            let savedPrefs = null;
+            try { savedPrefs = await eel.load_tts_prefs()(); } catch(e){}
+
+            const rateSlider = document.getElementById('tts-rate-slider');
+            const rateDisplay = document.getElementById('tts-rate-display');
+            const volSlider = document.getElementById('tts-volume-slider');
+            const volDisplay = document.getElementById('tts-volume-display');
+            const effectSelect = document.getElementById('tts-effect-select');
+
+            if (savedPrefs) {
+                if (savedPrefs.voice_id) voiceSelect.value = savedPrefs.voice_id;
+                if (savedPrefs.rate) {
+                    rateSlider.value = savedPrefs.rate;
+                    rateDisplay.innerText = `${savedPrefs.rate} WPM`;
+                }
+                if (savedPrefs.volume !== undefined) {
+                    volSlider.value = savedPrefs.volume;
+                    volDisplay.innerText = `${Math.round(savedPrefs.volume * 100)}%`;
+                }
+                if (savedPrefs.effect) effectSelect.value = savedPrefs.effect;
+
+                // apply instantly
+                try {
+                    eel.set_tts_voice(voiceSelect.value)();
+                    eel.set_tts_params(rateSlider.value, volSlider.value)();
+                    eel.set_tts_effect(effectSelect.value)();
+                } catch(e){}
             } else {
-                // If no voice saved, try to auto-select a female British one if possible
+                // Initial defaults fallback
                 let bestMatch = voices[0].id;
                 for (let v of voices) {
                     if (v.name.toLowerCase().includes('hazel') || v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('uk') || v.name.toLowerCase().includes('british')) {
@@ -650,13 +670,44 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
                 voiceSelect.value = bestMatch;
-                eel.set_tts_voice(bestMatch)();
+                try {
+                    eel.set_tts_voice(bestMatch)();
+                    eel.set_tts_params(rateSlider.value, volSlider.value)();
+                } catch(e){}
             }
 
-            voiceSelect.addEventListener('change', () => {
-                localStorage.setItem('nova_tts_voice', voiceSelect.value);
-                eel.set_tts_voice(voiceSelect.value)();
+            // Real-time slider updates (visual only)
+            rateSlider.addEventListener('input', () => {
+                rateDisplay.innerText = `${rateSlider.value} WPM`;
             });
+            volSlider.addEventListener('input', () => {
+                volDisplay.innerText = `${Math.round(volSlider.value * 100)}%`;
+            });
+
+            // Save Button Logic
+            const saveBtn = document.getElementById('save-tts-btn');
+            if(saveBtn) {
+                saveBtn.addEventListener('click', () => {
+                    const vid = voiceSelect.value;
+                    const r = rateSlider.value;
+                    const v = volSlider.value;
+                    const ef = effectSelect.value;
+
+                    try {
+                        eel.set_tts_voice(vid)();
+                        eel.set_tts_params(r, v)();
+                        eel.set_tts_effect(ef)();
+                        eel.save_tts_prefs(vid, parseInt(r), parseFloat(v), ef)();
+
+                        saveBtn.innerText = "SAVED!";
+                        saveBtn.style.color = "#0f0";
+                        setTimeout(() => {
+                            saveBtn.innerText = "[ SAVE TTS CONFIGURATION ]";
+                            saveBtn.style.color = "";
+                        }, 2000);
+                    } catch(e){}
+                });
+            }
 
         } catch(e) {
             console.error("Failed to load TTS voices", e);
@@ -1069,7 +1120,7 @@ function renderConfigFields(configObj, parentElement) {
         } else {
             // Root level primitives (fallback)
             const field = document.createElement('div');
-            field.className = "generic-obj-container";
+            field.className = "root-primitive-container";
             const wrapper = document.createElement('div');
             wrapper.className = "form-group";
             wrapper.style.display = "flex";
@@ -1155,8 +1206,17 @@ document.getElementById('save-config-btn').addEventListener('click', async () =>
                     if (input.type === 'number') val = parseFloat(input.value);
                     newConfig[realKey][subKey] = val;
                 });
+            } else if (dataContainer.classList.contains('root-primitive-container')) {
+                 // It's a root primitive
+                 const input = dataContainer.querySelector('input, select');
+                 if(input) {
+                     let val = input.value;
+                     if (input.type === 'checkbox') val = input.checked;
+                     if (input.type === 'number') val = parseFloat(input.value);
+                     newConfig[realKey] = val;
+                 }
             } else {
-                 // It's a root primitive (fallback logic if next sibling is a generic wrapper)
+                 // Fallback
                  if(dataContainer.classList.contains('form-group')){
                      const input = dataContainer.querySelector('input, select');
                      if(input) {

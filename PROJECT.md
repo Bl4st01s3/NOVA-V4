@@ -52,6 +52,7 @@ NOVA is transitioning to a hands-free, voice-activated interface. To prevent bac
 *   **Dual Input Pipelines**: Maintain separate processing queues for user microphone input vs. automated system alerts/warnings.
 *   **Automated 3D Model Publisher**: A watcher tool for a specific directory where 3D models, pictures, and markdown descriptions can be dropped. NOVA will automatically process the folder and post the assets to 3D printing distribution sites (Printables, MakerWorld, Thingiverse, etc.).
 *   **Document Reader**: An integration where NOVA can be pointed at a file (.txt, .pdf, Word document) to read the extracted text out loud.
+*   **Email Integration Tool**: A tool for reading, writing, and sending emails. This will be used by NOVA to automate tasks, update tracking aggregators, and set up automated system triggers.
 
 ### System Engineering Tasks
 *   **Persistent UI Chat History**: Sync the conversation array to a local file so the chat history is visually maintained in the UI between restarts/cycles.
