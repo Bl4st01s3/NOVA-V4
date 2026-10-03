@@ -199,6 +199,20 @@
                             </select>
                         </div>
 
+                        <div class="form-group" style="margin-top: 15px;">
+                            <label style="display: flex; justify-content: space-between;">
+                                <span>Speech Rate</span>
+                                <span id="tts-rate-display" style="color: var(--cyan);">200 WPM</span>
+                            </label>
+                            <input type="range" id="tts-rate-slider" min="50" max="400" step="10" value="200" style="width: 100%; accent-color: var(--cyan); cursor: pointer; margin-bottom: 15px;">
+
+                            <label style="display: flex; justify-content: space-between;">
+                                <span>TTS Volume</span>
+                                <span id="tts-volume-display" style="color: var(--cyan);">100%</span>
+                            </label>
+                            <input type="range" id="tts-volume-slider" min="0" max="1" step="0.05" value="1.0" style="width: 100%; accent-color: var(--purple); cursor: pointer; margin-bottom: 15px;">
+                        </div>
+
                         <div class="form-group">
                             <label>Voice Effect</label>
                             <select id="tts-effect-select" class="cyber-input">
@@ -207,6 +221,10 @@
                                 <option value="natural">Natural (No Effects)</option>
                             </select>
                         </div>
+
+                        <button class="cyber-btn" id="save-tts-btn" style="margin-top: 10px; width: 100%;">
+                            [ SAVE TTS CONFIGURATION ]
+                        </button>
                     </div>
 
                     <div class="settings-card">

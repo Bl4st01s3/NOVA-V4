@@ -615,6 +615,39 @@ def set_tts_voice(voice_id):
         print_and_log(f"Requested TTS Voice change to: {voice_id}")
 
 @eel.expose
+def set_tts_params(rate, volume):
+    """Sets the speech rate and volume for the pyttsx3 engine via command queue."""
+    tts_queue.put({"type": "set_params", "rate": rate, "volume": volume})
+    print_and_log(f"Requested TTS Params change: Rate={rate}, Volume={volume}")
+
+@eel.expose
+def save_tts_prefs(voice_id, rate, volume, effect):
+    """Saves TTS preferences to a config file."""
+    prefs = {
+        "voice_id": voice_id,
+        "rate": rate,
+        "volume": volume,
+        "effect": effect
+    }
+    try:
+        with open("tts_config.json", "w") as f:
+            json.dump(prefs, f)
+        print_and_log("Saved TTS preferences to tts_config.json")
+    except Exception as e:
+        print_and_log(f"[ERROR] Failed to save TTS prefs: {e}")
+
+@eel.expose
+def load_tts_prefs():
+    """Loads TTS preferences from a config file."""
+    if os.path.exists("tts_config.json"):
+        try:
+            with open("tts_config.json", "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print_and_log(f"[ERROR] Failed to load TTS prefs: {e}")
+    return None
+
+@eel.expose
 def set_tts_effect(effect):
     """Sets the current DSP audio effect applied to TTS output."""
     global current_tts_effect
@@ -698,6 +731,8 @@ def tts_worker():
         os.makedirs(temp_dir)
 
     current_worker_voice = None
+    current_worker_rate = 200 # default
+    current_worker_volume = 1.0 # default
 
     while True:
         task = tts_queue.get()
@@ -709,6 +744,12 @@ def tts_worker():
             if task.get("type") == "set_voice":
                 current_worker_voice = task["voice_id"]
                 print_and_log(f"Worker cached TTS Voice preference: {current_worker_voice}")
+            elif task.get("type") == "set_params":
+                if "rate" in task:
+                    current_worker_rate = int(task["rate"])
+                if "volume" in task:
+                    current_worker_volume = float(task["volume"])
+                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}, Volume={current_worker_volume}")
             continue
 
         # Otherwise it's text to speak
@@ -723,6 +764,8 @@ def tts_worker():
             tts_engine = pyttsx3.init()
             if current_worker_voice:
                 tts_engine.setProperty('voice', current_worker_voice)
+            tts_engine.setProperty('rate', current_worker_rate)
+            tts_engine.setProperty('volume', current_worker_volume)
 
             # Intercept TTS output to file
             print_and_log(f"[TTS WORKER] Saving raw TTS to: {temp_file}")
@@ -819,6 +862,11 @@ def save_tool_config(tool_name, new_config):
     except Exception as e:
         print_and_log(f"[ERROR] Could not save config for {tool_name}: {e}")
         return False
+
+@eel.expose
+def get_stream_safe_tools():
+    """Returns the current stream safe locks to the frontend."""
+    return stream_safe_tools
 
 @eel.expose
 def get_available_tools():
@@ -1327,6 +1375,15 @@ def start_app():
 
     # Load phonetic overrides before starting
     load_phonetic_overrides()
+
+    # Initialize TTS worker settings from file if they exist
+    prefs = load_tts_prefs()
+    if prefs:
+        if "effect" in prefs:
+            global current_tts_effect
+            current_tts_effect = prefs["effect"]
+        set_tts_voice(prefs.get("voice_id"))
+        set_tts_params(prefs.get("rate", 200), prefs.get("volume", 1.0))
 
     # Start the webhook API in a daemon thread so it dies when the main app closes
     threading.Thread(target=run_presence_server, daemon=True).start()
