@@ -37,52 +37,82 @@ def main():
     with open(config_path, "r") as f:
         config = json.load(f)
 
-    sheet_id = config.get("Cloud_File_Path", {}).get("Google_Drive_File_Path", "")
-    local_path = config.get("Local_File_Path", {}).get("File_Path", "")
+    # Extract Sync Settings
+    sync_settings = config.get("Sync_Settings", {})
+    sync_mode = sync_settings.get("Sync_Mode", "Both")
+    sync_priority = sync_settings.get("Sync_Priority", "Cloud First")
+
+    cloud_config = config.get("Cloud_Connection", {})
+    cloud_service = cloud_config.get("Service", "Google Drive")
+    sheet_id = cloud_config.get("File_ID_or_Path", "")
+
+    local_config = config.get("Local_Connection", {})
+    local_path = local_config.get("File_Path", "")
 
     if not sheet_id and not local_path:
-        print(json.dumps({"error": "Neither Google Sheet ID nor Local Excel path is configured."}))
+        print(json.dumps({"error": "Neither Cloud File ID nor Local Excel path is configured."}))
         return
 
-    # Attempt to connect to Google Sheets
     credentials_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "credentials", "google_credentials.json"))
 
     df = None
-    client = None
     worksheet = None
     used_cloud = False
 
-    if sheet_id and os.path.exists(credentials_path):
-        try:
-            scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-            creds = Credentials.from_service_account_file(credentials_path, scopes=scopes)
-            client = gspread.authorize(creds)
+    def try_cloud():
+        nonlocal df, worksheet, used_cloud
+        if sheet_id and cloud_service == "Google Drive" and os.path.exists(credentials_path):
+            try:
+                scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds = Credentials.from_service_account_file(credentials_path, scopes=scopes)
+                client = gspread.authorize(creds)
+                sheet = client.open_by_key(sheet_id)
+                worksheet = sheet.sheet1
+                data = worksheet.get_all_records()
+                df = pd.DataFrame(data)
+                used_cloud = True
+                return True
+            except Exception as e:
+                return False
+        return False
 
-            # Open the sheet
-            sheet = client.open_by_key(sheet_id)
-            worksheet = sheet.sheet1
-            data = worksheet.get_all_records()
-            df = pd.DataFrame(data)
-            used_cloud = True
-        except Exception as e:
-            # Cloud failed, fall back
-            used_cloud = False
-
-    # Fallback to local
-    if not used_cloud:
+    def try_local():
+        nonlocal df
         if local_path and os.path.exists(local_path):
             try:
                 df = pd.read_excel(local_path)
+                return True
             except Exception as e:
-                print(json.dumps({"error": f"Failed to read local Excel file: {str(e)}"}))
-                return
-        else:
-            print(json.dumps({"error": "Google Sheets failed and local Excel file not found."}))
+                return False
+        return False
+
+    # Execution Logic based on Sync Mode & Priority
+    if sync_mode == "Cloud Only":
+        success = try_cloud()
+        if not success:
+            print(json.dumps({"error": "Cloud connection failed and Sync_Mode is 'Cloud Only'."}))
             return
+
+    elif sync_mode == "Local Only":
+        success = try_local()
+        if not success:
+            print(json.dumps({"error": "Local read failed and Sync_Mode is 'Local Only'."}))
+            return
+
+    else: # "Both"
+        if sync_priority == "Cloud First":
+            if not try_cloud():
+                if not try_local():
+                    print(json.dumps({"error": "Both Cloud and Local reads failed."}))
+                    return
+        elif sync_priority == "Local First":
+            if not try_local():
+                if not try_cloud():
+                    print(json.dumps({"error": "Both Local and Cloud reads failed."}))
+                    return
 
     # Normalize DataFrame
     if df is None or df.empty:
-        # Create empty DF based on schema
         columns = list(config.get("schema", {}).keys())
         df = pd.DataFrame(columns=columns)
 
@@ -92,7 +122,6 @@ def main():
         for k, v in read_filters.items():
             if k in result_df.columns:
                 if isinstance(v, bool):
-                    # handle string booleans if necessary
                     result_df = result_df[result_df[k].astype(str).str.lower() == str(v).lower()]
                 else:
                     result_df = result_df[result_df[k] == v]
@@ -107,7 +136,7 @@ def main():
     elif action == "add":
         new_row = pd.DataFrame([new_order])
         df = pd.concat([df, new_row], ignore_index=True)
-        save_data(df, worksheet, local_path, used_cloud, config)
+        save_data(df, worksheet, local_path, used_cloud, sync_mode)
         print(json.dumps({"status": "success", "message": "Order added successfully."}))
 
     elif action == "update":
@@ -116,7 +145,6 @@ def main():
             print(json.dumps({"error": "Must provide 'Order_Number' or 'Item' in update_data to identify row."}))
             return
 
-        # Find row and update
         mask = (df["Order_Number"] == identifier) | (df["Item"] == identifier)
         if not mask.any():
             print(json.dumps({"error": f"Order {identifier} not found."}))
@@ -126,28 +154,30 @@ def main():
             if k in df.columns:
                 df.loc[mask, k] = v
 
-        save_data(df, worksheet, local_path, used_cloud, config)
+        save_data(df, worksheet, local_path, used_cloud, sync_mode)
         print(json.dumps({"status": "success", "message": f"Order {identifier} updated successfully."}))
 
     else:
         print(json.dumps({"error": f"Unknown action: {action}"}))
 
 
-def save_data(df, worksheet, local_path, used_cloud, config):
-    # Convert nans to empty strings
+def save_data(df, worksheet, local_path, used_cloud, sync_mode):
     df = df.fillna("")
 
-    # Save to local always (as backup)
-    if local_path:
+    # Write to local if mode allows
+    if sync_mode in ["Both", "Local Only"] and local_path:
         try:
             df.to_excel(local_path, index=False)
         except:
             pass
 
-    if used_cloud and worksheet:
-        # Update Google Sheet
-        worksheet.clear()
-        worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+    # Write to cloud if mode allows and connection was established
+    if sync_mode in ["Both", "Cloud Only"] and used_cloud and worksheet:
+        try:
+            worksheet.clear()
+            worksheet.update([df.columns.values.tolist()] + df.values.tolist())
+        except:
+            pass
 
 
 if __name__ == "__main__":

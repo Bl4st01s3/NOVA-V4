@@ -978,6 +978,42 @@ function createInputForValue(key, value, isSchemaBlock = false) {
             inputElement.appendChild(opt);
         });
     }
+    else if (key === "Sync_Mode") {
+        inputElement = document.createElement('select');
+        inputElement.className = "cyber-input config-input-select";
+        inputElement.id = "sync-mode-select"; // Used for event listener
+        ["Both", "Cloud Only", "Local Only"].forEach(mode => {
+            const opt = document.createElement('option');
+            opt.value = mode;
+            opt.innerText = mode;
+            if (mode === value) opt.selected = true;
+            inputElement.appendChild(opt);
+        });
+    }
+    else if (key === "Sync_Priority") {
+        inputElement = document.createElement('select');
+        inputElement.className = "cyber-input config-input-select";
+        inputElement.id = "sync-priority-select"; // Used for event listener
+        ["Cloud First", "Local First"].forEach(pri => {
+            const opt = document.createElement('option');
+            opt.value = pri;
+            opt.innerText = pri;
+            if (pri === value) opt.selected = true;
+            inputElement.appendChild(opt);
+        });
+    }
+    else if (key === "Service") {
+        inputElement = document.createElement('select');
+        inputElement.className = "cyber-input config-input-select";
+        inputElement.id = "cloud-service-select"; // Used for event listener
+        ["Google Drive", "OneDrive", "Dropbox"].forEach(svc => {
+            const opt = document.createElement('option');
+            opt.value = svc;
+            opt.innerText = svc;
+            if (svc === value) opt.selected = true;
+            inputElement.appendChild(opt);
+        });
+    }
     // Standard Inputs
     else if (typeof value === "boolean") {
         inputElement = document.createElement('input');
@@ -1148,6 +1184,55 @@ function openConfigModal(toolName, configData) {
     body.innerHTML = ''; // clear old
 
     renderConfigFields(configData, body);
+
+    // Add logic specifically for the Order Tracker dropdown links
+    const syncModeSelect = document.getElementById('sync-mode-select');
+    const syncPrioritySelect = document.getElementById('sync-priority-select');
+    const serviceSelect = document.getElementById('cloud-service-select');
+
+    // Auto-fill logic for Google Drive
+    if (serviceSelect) {
+        serviceSelect.addEventListener('change', (e) => {
+            const inputs = body.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                if (input.dataset.keyname === 'File_ID_or_Path') {
+                    if (e.target.value === 'Google Drive') {
+                        if(input.value === '') input.value = "[Enter Google Sheet ID here]";
+                    }
+                }
+            });
+        });
+    }
+
+    if (syncModeSelect && syncPrioritySelect) {
+        const updateSyncDisabledState = () => {
+            const mode = syncModeSelect.value;
+            if (mode === "Both") {
+                syncPrioritySelect.disabled = false;
+                syncPrioritySelect.style.opacity = "1";
+                if(serviceSelect) {
+                    serviceSelect.disabled = false;
+                    serviceSelect.style.opacity = "1";
+                }
+            } else if (mode === "Cloud Only") {
+                syncPrioritySelect.disabled = true;
+                syncPrioritySelect.style.opacity = "0.5";
+                if(serviceSelect) {
+                    serviceSelect.disabled = false;
+                    serviceSelect.style.opacity = "1";
+                }
+            } else if (mode === "Local Only") {
+                syncPrioritySelect.disabled = true;
+                syncPrioritySelect.style.opacity = "0.5";
+                if(serviceSelect) {
+                    serviceSelect.disabled = true;
+                    serviceSelect.style.opacity = "0.5";
+                }
+            }
+        };
+        syncModeSelect.addEventListener('change', updateSyncDisabledState);
+        updateSyncDisabledState(); // initial evaluation
+    }
 
     document.getElementById('tool-config-modal').style.display = 'flex';
 }

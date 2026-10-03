@@ -1,14 +1,20 @@
 {
-  "Cloud_File_Path": {
-     "Google_Drive_File_Path" : "",
-     "Access_Key": "",
-     "File_Type": "Spreadsheet",
-     "Time_Out": 5,
-     "Max_Retries": 2,
-     "Backup_Interval": 168
+  "Sync_Settings": {
+     "Sync_Mode": "Both",
+     "Sync_Priority": "Cloud First",
+     "Backup_Interval_Hours": 168,
+     "File_Type": "Spreadsheet"
   },
 
-  "Local_File_Path": {
+  "Cloud_Connection": {
+     "Service": "Google Drive",
+     "File_ID_or_Path": "",
+     "Access_Key": "",
+     "Time_Out": 5,
+     "Max_Retries": 2
+  },
+
+  "Local_Connection": {
     "File_Path": "",
     "Allow_Offline_Writes": true
   },
