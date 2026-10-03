@@ -53,6 +53,7 @@ NOVA is transitioning to a hands-free, voice-activated interface. To prevent bac
 *   **Automated 3D Model Publisher**: A watcher tool for a specific directory where 3D models, pictures, and markdown descriptions can be dropped. NOVA will automatically process the folder and post the assets to 3D printing distribution sites (Printables, MakerWorld, Thingiverse, etc.).
 *   **Document Reader**: An integration where NOVA can be pointed at a file (.txt, .pdf, Word document) to read the extracted text out loud.
 *   **Email Integration Tool**: A tool for reading, writing, and sending emails. This will be used by NOVA to automate tasks, update tracking aggregators, and set up automated system triggers.
+*   **Log Analyzer Dashboard**: A standalone UI or integrated tool that visualizes backend logs (e.g., connection errors, LLM traces). This allows the user to easily filter the "wall of text" and gives NOVA a structured way to read and diagnose her own system errors.
 
 ### System Engineering Tasks
 *   **Persistent UI Chat History**: Sync the conversation array to a local file so the chat history is visually maintained in the UI between restarts/cycles.

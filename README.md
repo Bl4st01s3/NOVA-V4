@@ -57,5 +57,6 @@ NOVA includes a multi-user Voice Profile Manager designed to distinguish between
 ## Setup and Running
 
 1. Run `setup.bat` to build the Python Virtual Environment and install dependencies.
-2. Run `run.bat` to launch the LM Studio server and open the NOVA UI silently in the background.
+2. Run `run.bat` to launch the LM Studio server and open the NOVA UI.
+3. For a completely invisible startup (e.g., if you want to place NOVA in your Windows Startup folder), use `launch_nova.vbs`.
 3. Check `nova.log` in the root directory for any debugging or error output.
