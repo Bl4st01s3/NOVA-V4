@@ -370,7 +370,7 @@ def _process_llm_response_inner():
 
     try:
         global ACTIVE_MODEL_ID
-        if not ACTIVE_MODEL_ID:
+        if not ACTIVE_MODEL_ID or ACTIVE_MODEL_ID == "local-model":
             try:
                 models = client.models.list()
                 if not models.data:
@@ -382,7 +382,8 @@ def _process_llm_response_inner():
                     except: pass
                     return "ERROR_NO_MODEL"
                 ACTIVE_MODEL_ID = models.data[0].id
-            except Exception:
+            except Exception as e:
+                log_error(f"Failed to fetch model list from LM Studio: {e}")
                 ACTIVE_MODEL_ID = "local-model"
 
         print_and_log(f"Using model: {ACTIVE_MODEL_ID}")
@@ -1193,14 +1194,15 @@ def generate_presence_message(event_type):
 
     try:
         global ACTIVE_MODEL_ID
-        if not ACTIVE_MODEL_ID:
+        if not ACTIVE_MODEL_ID or ACTIVE_MODEL_ID == "local-model":
             try:
                 models = client.models.list()
                 if models.data:
                     ACTIVE_MODEL_ID = models.data[0].id
                 else:
                     return
-            except Exception:
+            except Exception as e:
+                log_error(f"Presence webhook failed to fetch model: {e}")
                 return
 
         # We append directly to the main conversation history to leverage the existing KV Cache.
