@@ -1062,6 +1062,34 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
 
         wrapper.appendChild(label);
         wrapper.appendChild(input);
+
+        // Add File Browser Button if it's a file path or credential file
+        if (key === "Credentials_File" || key === "File_Path") {
+            const browseBtn = document.createElement('button');
+            browseBtn.innerText = "BROWSE";
+            browseBtn.className = "cyber-btn";
+            browseBtn.style.padding = "2px 10px";
+            browseBtn.style.fontSize = "10px";
+            browseBtn.style.marginLeft = "5px";
+
+            browseBtn.onclick = async () => {
+                try {
+                    const selectedFile = await eel.open_file_dialog()();
+                    if (selectedFile) {
+                        // If it's a credentials file, just extract the filename to keep it clean, otherwise use full path
+                        if (key === "Credentials_File") {
+                            input.value = selectedFile.split('\\').pop().split('/').pop();
+                        } else {
+                            input.value = selectedFile;
+                        }
+                    }
+                } catch(e) {
+                    console.error("File dialog failed", e);
+                }
+            };
+            wrapper.appendChild(browseBtn);
+        }
+
         container.appendChild(wrapper);
     }
     parentElement.appendChild(container);
