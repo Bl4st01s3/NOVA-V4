@@ -41,6 +41,8 @@ import numpy as np
 import scipy.io.wavfile as wav
 import scipy.signal as signal
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import tkinter as tk
+from tkinter import filedialog
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 import psutil
@@ -315,7 +317,7 @@ def send_message_to_nova(user_text):
         # without showing the user prompt in the UI chat history block.
         now = datetime.now()
         current_time_str = now.strftime("%I:%M %p")
-        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Give a quick, conversational, J.A.R.V.I.S.-style spoken greeting to the user, confirming that you are fully online and ready. DO NOT use tools, JSON, or formatting. DO NOT wrap your response in quotation marks. Output only the raw spoken dialogue."
+        hidden_prompt = f"The system has just successfully booted up. The current time is {current_time_str}. Give a quick, conversational, J.A.R.V.I.S.-style spoken greeting to the user, confirming that you are fully online and ready. DO NOT introduce yourself with 'I am NOVA' or similar phrases, as the user already knows who you are. Favor phrases like 'NOVA systems online'. DO NOT use tools, JSON, or formatting. DO NOT wrap your response in quotation marks. Output only the raw spoken dialogue."
         conversation_history.append({"role": "user", "content": hidden_prompt})
     else:
         print_and_log(f"User: {user_text}")
@@ -838,6 +840,16 @@ def set_tool_stream_safe(tool_name, is_safe):
             json.dump(stream_safe_tools, f)
     except Exception as e:
         print_and_log(f"[ERROR] Failed to save stream safe tools: {e}")
+
+@eel.expose
+def open_file_dialog(initial_dir=""):
+    """Opens a native OS file dialog and returns the selected path."""
+    root = tk.Tk()
+    root.withdraw() # Hide the main tk window
+    root.attributes('-topmost', True) # Bring to front
+    file_path = filedialog.askopenfilename(initialdir=initial_dir, title="Select File")
+    root.destroy()
+    return file_path
 
 @eel.expose
 def get_tool_config(tool_name):
