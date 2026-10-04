@@ -45,6 +45,7 @@ def main():
     cloud_config = config.get("Cloud_Connection", {})
     cloud_service = cloud_config.get("Service", "Google Drive")
     sheet_id = cloud_config.get("File_ID_or_Path", "")
+    credentials_filename = cloud_config.get("Credentials_File", "google_credentials.json")
 
     local_config = config.get("Local_Connection", {})
     local_path = local_config.get("File_Path", "")
@@ -53,7 +54,7 @@ def main():
         print(json.dumps({"error": "Neither Cloud File ID nor Local Excel path is configured."}))
         return
 
-    credentials_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "credentials", "google_credentials.json"))
+    credentials_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "credentials", credentials_filename))
 
     df = None
     worksheet = None
