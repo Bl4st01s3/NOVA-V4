@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 venv/verification_venv/
 nova.log
+credentials/*.json
+stream_safe_tools.json
+tts_config.json
+chat_history.json
