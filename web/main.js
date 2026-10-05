@@ -1058,11 +1058,17 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
         label.style.width = "150px"; // Fixed width for alignment
 
         const input = createInputForValue(key, obj[key], isSchemaBlock);
-        input.style.flex = "1";
-        input.style.minWidth = "0"; // Prevents flexbox from forcing input to collapse to zero
 
         wrapper.appendChild(label);
-        wrapper.appendChild(input);
+
+        // Wrap the input and potential button together to fix flexbox squishing
+        const inputWrapper = document.createElement('div');
+        inputWrapper.style.display = "flex";
+        inputWrapper.style.width = "100%";
+        inputWrapper.style.gap = "10px";
+
+        input.style.width = "100%"; // Take up all available space in the new wrapper
+        inputWrapper.appendChild(input);
 
         // Add File Browser Button if it's a file path or credential file
         if (key === "Credentials_File" || key === "File_Path") {
@@ -1071,8 +1077,7 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
             browseBtn.className = "cyber-btn";
             browseBtn.style.padding = "2px 10px";
             browseBtn.style.fontSize = "10px";
-            browseBtn.style.marginLeft = "5px";
-            browseBtn.style.flexShrink = "0"; // Prevent button from squishing
+            browseBtn.style.whiteSpace = "nowrap"; // Keep the text on one line so it doesn't break layout
 
             browseBtn.onclick = async () => {
                 try {
@@ -1098,9 +1103,10 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
                     console.error("File dialog failed", e);
                 }
             };
-            wrapper.appendChild(browseBtn);
+            inputWrapper.appendChild(browseBtn);
         }
 
+        wrapper.appendChild(inputWrapper);
         container.appendChild(wrapper);
     }
     parentElement.appendChild(container);
