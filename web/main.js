@@ -1059,6 +1059,7 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
 
         const input = createInputForValue(key, obj[key], isSchemaBlock);
         input.style.flex = "1";
+        input.style.minWidth = "0"; // Prevents flexbox from forcing input to collapse to zero
 
         wrapper.appendChild(label);
         wrapper.appendChild(input);
@@ -1071,6 +1072,7 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
             browseBtn.style.padding = "2px 10px";
             browseBtn.style.fontSize = "10px";
             browseBtn.style.marginLeft = "5px";
+            browseBtn.style.flexShrink = "0"; // Prevent button from squishing
 
             browseBtn.onclick = async () => {
                 try {
@@ -1082,6 +1084,15 @@ function renderGenericObject(obj, parentElement, isSchemaBlock = false) {
                         } else {
                             input.value = selectedFile;
                         }
+
+                        // Visual confirmation
+                        const originalText = browseBtn.innerText;
+                        browseBtn.innerText = "[ SELECTED ]";
+                        browseBtn.style.color = "#0f0";
+                        setTimeout(() => {
+                            browseBtn.innerText = originalText;
+                            browseBtn.style.color = "";
+                        }, 2000);
                     }
                 } catch(e) {
                     console.error("File dialog failed", e);
