@@ -267,6 +267,42 @@ def set_streamer_mode(enabled):
         conversation_history[0]["content"] = load_system_prompt()
 
 
+def auto_minimize_lms():
+    """
+    Since lms CLI lacks a headless flag, it forces the Bionic GUI to open.
+    This background thread waits for the window to appear on Windows OS and minimizes it.
+    """
+    if os.name != 'nt':
+        return
+
+    try:
+        import ctypes
+        import win32gui
+        import win32con
+
+        def enum_window_callback(hwnd, lparam):
+            if win32gui.IsWindowVisible(hwnd):
+                title = win32gui.GetWindowText(hwnd)
+                # LM Studio window titles usually contain "LM Studio"
+                if "LM Studio" in title:
+                    # Minimize the window
+                    win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+                    print_and_log(f"[SYSTEM] Auto-minimized Bionic UI window: {title}")
+                    return False # Stop enumerating once found
+            return True
+
+        # Try for up to 30 seconds to catch the window pop-up during boot
+        for _ in range(15):
+            time.sleep(2)
+            try:
+                win32gui.EnumWindows(enum_window_callback, None)
+            except Exception:
+                pass # Exception here usually means we stopped enumeration intentionally
+
+    except ImportError:
+        pass # pywin32 not installed, skip auto-minimize
+
+
 def monitor_obs_process():
     """Background thread to detect if OBS is running and auto-toggle Streamer Mode."""
     obs_process_names = {"obs64.exe", "obs32.exe", "obs"}
@@ -1404,6 +1440,9 @@ def start_app():
 
     # Start the OBS background monitor
     threading.Thread(target=monitor_obs_process, daemon=True).start()
+
+    # Start the auto-minimizer for the unhideable Bionic UI
+    threading.Thread(target=auto_minimize_lms, daemon=True).start()
 
     # Initialize eel pointing to our 'web' folder
     eel.init('web')
