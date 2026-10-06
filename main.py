@@ -516,12 +516,14 @@ def _process_llm_response_inner():
         sentence_buffer = ""
         tool_name = None
         tool_args_str = ""
+        is_manual_tool_call = False
+        is_silenced = False
 
         # Iterate over the streamed chunks
         for chunk in response:
             delta = chunk.choices[0].delta
 
-            # Handle Tool Calls
+            # Handle Native Tool Calls
             if delta.tool_calls:
                 tc = delta.tool_calls[0]
                 if tc.function:
@@ -536,29 +538,36 @@ def _process_llm_response_inner():
                 # Strip leading double quotes if it's the very first token
                 if len(ai_text) == 0 and token.startswith('"'):
                     token = token[1:]
+
                 ai_text += token
                 sentence_buffer += token
-                token_queue.put(token)
 
-                # Check for sentence completion (punctuation followed by a space or newline) to feed the TTS engine
-                for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
-                    if punc in sentence_buffer:
-                        parts = sentence_buffer.split(punc, 1)
-                        # Add the stripped punctuation back to the sentence
-                        sentence_to_speak = parts[0] + punc.strip()
-                        if sentence_to_speak.strip():
-                            # Clean the text (remove underscores, json brackets, markdown) before speaking
-                            clean_speech = clean_text_for_speech(sentence_to_speak)
-                            if clean_speech:
-                                tts_queue.put(clean_speech)
-                        # Keep whatever token fragment came after the punctuation for the next sentence
-                        sentence_buffer = parts[1]
-                        break
+                # If we detect the start of a manual tool block, instantly silence the stream
+                if "<tool_call>" in ai_text:
+                    is_silenced = True
+                    is_manual_tool_call = True
+
+                if not is_silenced:
+                    token_queue.put(token)
+                    # Check for sentence completion (punctuation followed by a space or newline) to feed the TTS engine
+                    for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                        if punc in sentence_buffer:
+                            parts = sentence_buffer.split(punc, 1)
+                            # Add the stripped punctuation back to the sentence
+                            sentence_to_speak = parts[0] + punc.strip()
+                            if sentence_to_speak.strip():
+                                # Clean the text (remove underscores, json brackets, markdown) before speaking
+                                clean_speech = clean_text_for_speech(sentence_to_speak)
+                                if clean_speech:
+                                    tts_queue.put(clean_speech)
+                            # Keep whatever token fragment came after the punctuation for the next sentence
+                            sentence_buffer = parts[1]
+                            break
 
         # Finished generating.
 
         # Check if the LLM outputted a manual JSON tool call block in its standard content
-        if not tool_name and "<tool_call>" in ai_text and "</tool_call>" in ai_text:
+        if is_manual_tool_call and "</tool_call>" in ai_text:
             try:
                 import json
                 json_str = ai_text.split("<tool_call>")[1].split("</tool_call>")[0].strip()
@@ -571,6 +580,12 @@ def _process_llm_response_inner():
                 else:
                     tool_args_str = str(args)
                 print_and_log(f"[SYSTEM] Intercepted manual JSON block for tool: {tool_name}")
+
+                # Since we silenced the stream halfway through to hide the JSON, we need to completely wipe
+                # whatever introductory conversational text it generated so the UI is clean for the tool result.
+                try: eel.clearLastAIMessage()
+                except: pass
+
             except Exception as e:
                 log_error(f"[SYSTEM] Failed to parse manual tool block: {e}")
 

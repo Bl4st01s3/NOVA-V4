@@ -1421,6 +1421,15 @@ function streamAIComplete() {
     document.getElementById('input-text').focus();
 }
 
+eel.expose(clearLastAIMessage);
+function clearLastAIMessage() {
+    const aiMessages = document.querySelectorAll('.ai-message');
+    if (aiMessages.length > 0) {
+        const lastMessage = aiMessages[aiMessages.length - 1];
+        lastMessage.innerHTML = ''; // Wipe out the text entirely
+    }
+}
+
 eel.expose(syncStreamerModeUI, "sync_streamer_mode_ui");
 function syncStreamerModeUI(isEnabled, safeTools) {
     const checkbox = document.getElementById('streamer-mode-toggle');
