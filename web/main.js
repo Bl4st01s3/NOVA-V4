@@ -900,7 +900,7 @@ function pushAIMessage(text) {
 
 eel.expose(addActivityLog);
 
-function addActivityLog(type, message) {
+function addActivityLog(type, message, providedTime = null) {
     const logContainer = document.getElementById('log-container');
     if (!logContainer) return;
 
@@ -908,13 +908,31 @@ function addActivityLog(type, message) {
     logEntry.classList.add('log-entry', type === 'tool' ? 'tool-log' : 'system-log');
 
     // Get simple timestamp
-    const now = new Date();
-    const timeString = now.toLocaleTimeString([], { hour12: false });
+    let timeString = providedTime;
+    if (!timeString) {
+        const now = new Date();
+        timeString = now.toLocaleTimeString([], { hour12: false });
+    }
 
     logEntry.innerHTML = `<span class="log-time">[${timeString}]</span> <span class="log-msg">${message}</span>`;
     logContainer.appendChild(logEntry);
     logContainer.scrollTop = logContainer.scrollHeight;
 }
+
+// Load Persistent Activity History
+async function loadActivityHistory() {
+    try {
+        const history = await eel.get_activity_history()();
+        if (history && history.length > 0) {
+            history.forEach(log => {
+                addActivityLog(log.type, log.message, log.time);
+            });
+        }
+    } catch (e) {
+        console.error("Failed to load activity history:", e);
+    }
+}
+setTimeout(loadActivityHistory, 500);
 
 
 // --- Dynamic Config Modal Logic ---

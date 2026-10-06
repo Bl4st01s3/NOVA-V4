@@ -59,6 +59,25 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+def safe_add_activity_log(log_type, message):
+    """Safely pushes an activity log to the frontend and saves it to disk."""
+    try:
+        eel.addActivityLog(log_type, message)
+
+        # We also want to record this locally
+        now = datetime.now()
+        time_str = now.strftime("%I:%M %p")
+
+        global activity_history
+        activity_history.append({
+            "type": log_type,
+            "message": message,
+            "time": time_str
+        })
+        save_activity_history(activity_history)
+    except:
+        pass
+
 def print_and_log(message):
     # Now that sys.stdout is redirected, print() naturally goes to the log file.
     # We also log it for formatting consistency where needed.
@@ -231,6 +250,26 @@ def load_system_prompt():
     return base_prompt
 
 CHAT_HISTORY_FILE = "chat_history.json"
+ACTIVITY_LOG_FILE = "activity_log.json"
+
+def load_activity_history():
+    """Loads previous activity log history from disk."""
+    if os.path.exists(ACTIVITY_LOG_FILE):
+        try:
+            with open(ACTIVITY_LOG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log_error(f"Failed to load activity history: {e}")
+    return []
+
+def save_activity_history(history_array):
+    """Saves the current activity history to disk."""
+    try:
+        with open(ACTIVITY_LOG_FILE, "w", encoding="utf-8") as f:
+            # Only keep the last 100 entries to prevent the file from growing indefinitely
+            json.dump(history_array[-100:], f, indent=4)
+    except Exception as e:
+        log_error(f"Failed to save activity history: {e}")
 
 def load_chat_history():
     """Loads previous chat history from disk to persist across sessions."""
@@ -260,6 +299,12 @@ def save_chat_history():
 
 # Store conversation history to maintain context
 conversation_history = load_chat_history()
+activity_history = load_activity_history()
+
+@eel.expose
+def get_activity_history():
+    """Returns the activity history to the UI on load."""
+    return activity_history
 
 @eel.expose
 def get_chat_history():
@@ -481,16 +526,14 @@ def _process_llm_response_inner():
         # Finished generating.
         if tool_name:
             print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
-            try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}<br><span style='font-size: 10px; color: #888;'>Args: {tool_args_str}</span>")
-            except: pass
+            safe_add_activity_log('tool', f"LLM executing tool: {tool_name}<br><span style='font-size: 10px; color: #888;'>Args: {tool_args_str}</span>")
 
             # Check Streamer Mode locks
             is_tool_safe = stream_safe_tools.get(tool_name, False)
             if streamer_mode_enabled and not is_tool_safe:
                 tool_output = f"SYSTEM ERROR: Execution of {tool_name} is BLOCKED because Streamer Mode is active and this tool is not marked as Stream Safe. Tell the user you cannot perform this action while live."
                 print_and_log(f"[SYSTEM] BLOCKED tool {tool_name} due to Streamer Mode.")
-                try: eel.addActivityLog('system', f"Tool {tool_name} BLOCKED by Streamer Mode.")
-                except: pass
+                safe_add_activity_log('system', f"Tool {tool_name} BLOCKED by Streamer Mode.")
             else:
                 # Here we EXECUTE the tool and send the result BACK to the LLM to summarize
                 import subprocess
@@ -507,8 +550,16 @@ def _process_llm_response_inner():
                     tool_output = result.stdout.strip()
                     if result.stderr.strip():
                         tool_output += f"\nError Output: {result.stderr.strip()}"
+
+                    # Output the data visually to the user so they know what NOVA is reading
+                    # If it's too long, truncate it
+                    vis_output = tool_output
+                    if len(vis_output) > 500:
+                        vis_output = vis_output[:500] + "... (truncated)"
+                    safe_add_activity_log('tool', f"Tool Result:<br><span style='font-size: 10px; color: #0f0;'>{vis_output}</span>")
                 else:
                     tool_output = f"Error: Tool {tool_name} not found."
+                    safe_add_activity_log('system', f"Error: Tool {tool_name} not found.")
 
             print_and_log(f"[SYSTEM] Tool result: {tool_output}")
 
@@ -1342,8 +1393,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
                         print_and_log("[PRESENCE API] User has gone idle/left (Sleep mode).")
                         presence_state["is_present"] = False
                         presence_state["last_event_time"] = now
-                        try: eel.addActivityLog('system', "Vision system: User absent. Sleep mode activated.")
-                        except: pass
+                        safe_add_activity_log('system', "Vision system: User absent. Sleep mode activated.")
 
                     elif event == "wakeup":
                         print_and_log("[PRESENCE API] User returned (Wakeup mode).")
@@ -1351,8 +1401,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
 
                         if not presence_state["is_present"] or time_away > 120:
                             print_and_log(f"[PRESENCE API] User was away for {int(time_away)}s. Triggering greeting.")
-                            try: eel.addActivityLog('system', "Vision system: User returned. Generating greeting.")
-                            except: pass
+                            safe_add_activity_log('system', "Vision system: User returned. Generating greeting.")
                             threading.Thread(target=generate_presence_message, args=("wakeup",), daemon=True).start()
 
                         presence_state["is_present"] = True
@@ -1363,8 +1412,7 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
                         print_and_log("[PRESENCE API] User is actively leaving.")
                         presence_state["is_present"] = False
                         presence_state["last_event_time"] = now
-                        try: eel.addActivityLog('system', "Vision system: User actively leaving. Generating farewell.")
-                        except: pass
+                        safe_add_activity_log('system', "Vision system: User actively leaving. Generating farewell.")
                         threading.Thread(target=generate_presence_message, args=("leaving",), daemon=True).start()
 
                     self._send_response(200, {"status": "success", "event": event})
