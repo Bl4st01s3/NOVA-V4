@@ -63,20 +63,27 @@ def safe_add_activity_log(log_type, message):
     """Safely pushes an activity log to the frontend and saves it to disk."""
     try:
         eel.addActivityLog(log_type, message)
+    except Exception as e:
+        log_error(f"Failed to push activity log to UI: {e}")
 
+    try:
         # We also want to record this locally
         now = datetime.now()
         time_str = now.strftime("%I:%M %p")
 
         global activity_history
+        # If activity_history isn't initialized yet, initialize it
+        if 'activity_history' not in globals():
+            activity_history = []
+
         activity_history.append({
             "type": log_type,
             "message": message,
             "time": time_str
         })
         save_activity_history(activity_history)
-    except:
-        pass
+    except Exception as e:
+        log_error(f"Failed to save activity log to disk: {e}")
 
 def print_and_log(message):
     # Now that sys.stdout is redirected, print() naturally goes to the log file.
@@ -238,11 +245,25 @@ def load_system_prompt():
                 except Exception as e:
                     pass
 
+            # Also dynamically load the schema to force the LLM to know how to call it manually
+            schema_path = os.path.join("tools", t, "schema.json")
+            if os.path.exists(schema_path):
+                try:
+                    with open(schema_path, "r", encoding="utf-8") as f:
+                        schema_data = f.read().strip()
+                        tool_context += f"\n  JSON Schema Format to Call This Tool: {schema_data}"
+                except:
+                    pass
+
             if tool_context:
                 base_prompt += f"- {t}: {tool_context}\n"
                 tools_injected = True
 
-    if not tools_injected:
+    if tools_injected:
+        base_prompt += "\n\nCRITICAL DIRECTIVE: To execute a tool, you MUST output a raw JSON block starting with <tool_call> and ending with </tool_call> containing the tool's name and arguments. Example:\n"
+        base_prompt += "<tool_call>{\"name\": \"tool_name\", \"arguments\": {\"arg1\": \"value1\"}}</tool_call>\n"
+        base_prompt += "Do NOT output any other text before or after the JSON block. Do NOT converse. Just output the JSON."
+    else:
         base_prompt += "- No tools currently active.\n"
 
     # Inject long-term memory facts if the file exists
@@ -535,6 +556,24 @@ def _process_llm_response_inner():
                         break
 
         # Finished generating.
+
+        # Check if the LLM outputted a manual JSON tool call block in its standard content
+        if not tool_name and "<tool_call>" in ai_text and "</tool_call>" in ai_text:
+            try:
+                import json
+                json_str = ai_text.split("<tool_call>")[1].split("</tool_call>")[0].strip()
+                tool_data = json.loads(json_str)
+                tool_name = tool_data.get("name")
+                # Ensure arguments are a string for consistency with native tool calling
+                args = tool_data.get("arguments", {})
+                if isinstance(args, dict):
+                    tool_args_str = json.dumps(args)
+                else:
+                    tool_args_str = str(args)
+                print_and_log(f"[SYSTEM] Intercepted manual JSON block for tool: {tool_name}")
+            except Exception as e:
+                log_error(f"[SYSTEM] Failed to parse manual tool block: {e}")
+
         if tool_name:
             print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
             safe_add_activity_log('tool', f"LLM executing tool: {tool_name}<br><span style='font-size: 10px; color: #888;'>Args: {tool_args_str}</span>")
@@ -1490,6 +1529,7 @@ def start_app():
     eel.init('web')
 
     print_and_log("NOVA UI Initialized. Launching window...")
+    safe_add_activity_log('system', "NOVA UI Initialized. System Booting...")
 
     # Start a background health check to verify the LM Studio connection
     def health_check():
