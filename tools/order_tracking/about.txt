@@ -1,3 +1,4 @@
 You have access to an Order Tracker tool. This tool syncs a Google Sheet with a local Excel fallback.
 Use it to track packages, add new orders you discover, and update dispatch/delivery statuses.
 When asked about ordered items or package statuses, use the 'read' action. When asked to log a new purchase, use the 'add' action.
+When reading, use the exact Column/Filter names listed below to filter your search (e.g. {"read_filters": {"Delivered": false}}).

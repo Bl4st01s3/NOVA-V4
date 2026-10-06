@@ -183,14 +183,34 @@ def load_system_prompt():
     for t in available_tools:
         if active_llm_tools.get(t, True):
             about_path = os.path.join("tools", t, "about.txt")
+            config_path = os.path.join("tools", t, "config.json")
+
+            tool_context = ""
             if os.path.exists(about_path):
                 try:
                     with open(about_path, "r", encoding="utf-8") as f:
-                        about_text = f.read().strip()
-                        base_prompt += f"- {t}: {about_text}\n"
-                        tools_injected = True
+                        tool_context += f.read().strip()
                 except Exception as e:
                     pass
+
+            # Dynamically inject the schema columns if the tool has a spreadsheet config
+            # This allows the LLM to know exactly what filters it can pass to the tool
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, "r", encoding="utf-8") as f:
+                        config_data = json.load(f)
+                        if "schema" in config_data:
+                            schema_keys = []
+                            for key_name, key_data in config_data["schema"].items():
+                                data_type = key_data.get("Type", "string")
+                                schema_keys.append(f"'{key_name}' ({data_type})")
+                            tool_context += f"\n  Available Columns/Filters: " + ", ".join(schema_keys)
+                except Exception as e:
+                    pass
+
+            if tool_context:
+                base_prompt += f"- {t}: {tool_context}\n"
+                tools_injected = True
 
     if not tools_injected:
         base_prompt += "- No tools currently active.\n"
@@ -461,7 +481,7 @@ def _process_llm_response_inner():
         # Finished generating.
         if tool_name:
             print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
-            try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}")
+            try: eel.addActivityLog('tool', f"LLM executing tool: {tool_name}<br><span style='font-size: 10px; color: #888;'>Args: {tool_args_str}</span>")
             except: pass
 
             # Check Streamer Mode locks
@@ -469,6 +489,8 @@ def _process_llm_response_inner():
             if streamer_mode_enabled and not is_tool_safe:
                 tool_output = f"SYSTEM ERROR: Execution of {tool_name} is BLOCKED because Streamer Mode is active and this tool is not marked as Stream Safe. Tell the user you cannot perform this action while live."
                 print_and_log(f"[SYSTEM] BLOCKED tool {tool_name} due to Streamer Mode.")
+                try: eel.addActivityLog('system', f"Tool {tool_name} BLOCKED by Streamer Mode.")
+                except: pass
             else:
                 # Here we EXECUTE the tool and send the result BACK to the LLM to summarize
                 import subprocess
