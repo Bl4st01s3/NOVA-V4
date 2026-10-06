@@ -1403,7 +1403,7 @@ function streamAIComplete() {
     document.getElementById('input-text').focus();
 }
 
-eel.expose(syncStreamerModeUI);
+eel.expose(syncStreamerModeUI, "sync_streamer_mode_ui");
 function syncStreamerModeUI(isEnabled, safeTools) {
     const checkbox = document.getElementById('streamer-mode-toggle');
     if (checkbox) checkbox.checked = isEnabled;
