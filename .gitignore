@@ -6,3 +6,4 @@ credentials/*.json
 stream_safe_tools.json
 tts_config.json
 chat_history.json
+activity_log.json
