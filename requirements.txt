@@ -8,3 +8,7 @@ scipy
 psutil
 pyttsx3
 pywin32; sys_platform == 'win32'
+gspread
+pandas
+openpyxl
+google-auth

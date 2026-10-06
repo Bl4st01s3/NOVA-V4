@@ -93,9 +93,20 @@ import re
 phonetic_overrides = {}
 
 def load_phonetic_overrides():
-    """Loads phonetic overrides from tool config.json files."""
+    """Loads global phonetic overrides and tool-specific overrides."""
     global phonetic_overrides
     phonetic_overrides.clear()
+
+    # Load global phonetics dictionary
+    if os.path.exists("phonetics.json"):
+        try:
+            with open("phonetics.json", "r", encoding="utf-8") as f:
+                global_phonetics = json.load(f)
+                # Convert keys to lowercase for case-insensitive matching
+                for key, val in global_phonetics.items():
+                    phonetic_overrides[key.lower()] = val
+        except Exception as e:
+            log_error(f"Failed to load global phonetics.json: {e}")
 
     tools_dir = "tools"
     if os.path.exists(tools_dir):
