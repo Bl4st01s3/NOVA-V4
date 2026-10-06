@@ -73,7 +73,7 @@ def safe_add_activity_log(log_type, message):
 
         global activity_history
         # If activity_history isn't initialized yet, initialize it
-        if 'activity_history' not in globals():
+        if 'activity_history' not in globals() or activity_history is None:
             activity_history = []
 
         activity_history.append({
@@ -260,8 +260,8 @@ def load_system_prompt():
                 tools_injected = True
 
     if tools_injected:
-        base_prompt += "\n\nCRITICAL DIRECTIVE: To execute a tool, you MUST output a raw JSON block starting with <tool_call> and ending with </tool_call> containing the tool's name and arguments. Example:\n"
-        base_prompt += "<tool_call>{\"name\": \"tool_name\", \"arguments\": {\"arg1\": \"value1\"}}</tool_call>\n"
+        base_prompt += "\n\nCRITICAL DIRECTIVE: To execute a tool, you MUST output a raw JSON block representing the tool call. Example:\n"
+        base_prompt += "{\"type\": \"function\", \"name\": \"tool_name\", \"arguments\": {\"arg1\": \"value1\"}}\n"
         base_prompt += "Do NOT output any other text before or after the JSON block. Do NOT converse. Just output the JSON."
     else:
         base_prompt += "- No tools currently active.\n"
@@ -542,8 +542,8 @@ def _process_llm_response_inner():
                 ai_text += token
                 sentence_buffer += token
 
-                # If we detect the start of a manual tool block, instantly silence the stream
-                if "<tool_call>" in ai_text:
+                # If we detect the start of a JSON block, instantly silence the stream to prevent it from speaking JSON
+                if "{\"type\": \"function\"" in ai_text or "{\"name\":" in ai_text:
                     is_silenced = True
                     is_manual_tool_call = True
 
@@ -567,27 +567,34 @@ def _process_llm_response_inner():
         # Finished generating.
 
         # Check if the LLM outputted a manual JSON tool call block in its standard content
-        if is_manual_tool_call and "</tool_call>" in ai_text:
-            try:
-                import json
-                json_str = ai_text.split("<tool_call>")[1].split("</tool_call>")[0].strip()
-                tool_data = json.loads(json_str)
-                tool_name = tool_data.get("name")
-                # Ensure arguments are a string for consistency with native tool calling
-                args = tool_data.get("arguments", {})
-                if isinstance(args, dict):
-                    tool_args_str = json.dumps(args)
-                else:
-                    tool_args_str = str(args)
-                print_and_log(f"[SYSTEM] Intercepted manual JSON block for tool: {tool_name}")
+        if not tool_name and "{" in ai_text and "}" in ai_text:
+            start = ai_text.find('{')
+            end = ai_text.rfind('}')
+            if start != -1 and end != -1 and end > start:
+                json_str = ai_text[start:end+1]
+                try:
+                    import json
+                    tool_data = json.loads(json_str)
 
-                # Since we silenced the stream halfway through to hide the JSON, we need to completely wipe
-                # whatever introductory conversational text it generated so the UI is clean for the tool result.
-                try: eel.clearLastAIMessage()
-                except: pass
+                    # Ensure it is actually a tool call and not just a random JSON statement
+                    if "name" in tool_data:
+                        tool_name = tool_data.get("name")
 
-            except Exception as e:
-                log_error(f"[SYSTEM] Failed to parse manual tool block: {e}")
+                        # Grab arguments or parameters depending on how the LLM formatted it
+                        args = tool_data.get("arguments") or tool_data.get("parameters", {})
+                        if isinstance(args, dict):
+                            tool_args_str = json.dumps(args)
+                        else:
+                            tool_args_str = str(args)
+
+                        print_and_log(f"[SYSTEM] Intercepted manual JSON block for tool: {tool_name}")
+
+                        # Wipe out whatever introductory conversational text it generated so the UI is clean
+                        try: eel.clearLastAIMessage()
+                        except: pass
+                except Exception as e:
+                    # Not a valid JSON tool block, ignore
+                    pass
 
         if tool_name:
             print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
@@ -632,21 +639,22 @@ def _process_llm_response_inner():
             # and then call the LLM AGAIN to generate the final text based on the tool data.
             # This is standard OpenAI tool calling flow.
 
-            conversation_history.append({
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [{
-                    "id": "call_123",
-                    "type": "function",
-                    "function": {"name": tool_name, "arguments": tool_args_str}
-                }]
-            })
+            # When forcing a manual JSON tool call via the Assistant text output, appending a "role": "tool"
+            # message back to the OpenAI API without a corresponding native "tool_calls" object in the
+            # previous Assistant message will cause a 400 Bad Request crash.
+            # Instead, we mock the tool execution sequence entirely in the system prompt context.
 
             conversation_history.append({
-                "role": "tool",
-                "tool_call_id": "call_123",
-                "name": tool_name,
-                "content": tool_output
+                "role": "assistant",
+                "content": ai_text # Add what it said so far (the manual json)
+            })
+
+            # Recurse: Call the LLM again with the new history to get the final answer!
+            # We append a temporary system message with the tool result.
+            recurse_history = list(conversation_history)
+            recurse_history.append({
+                "role": "system",
+                "content": f"TOOL_EXECUTION_RESULT for '{tool_name}':\n{tool_output}\n\nYou have received the tool output. Now format the final response as plain spoken text to the user. DO NOT output JSON. DO NOT invoke any more tools."
             })
 
             # Recurse: Call the LLM again with the new history to get the final answer!
