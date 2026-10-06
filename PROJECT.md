@@ -56,6 +56,7 @@ NOVA is transitioning to a hands-free, voice-activated interface. To prevent bac
 *   **Log Analyzer Dashboard**: A standalone UI or integrated tool that visualizes backend logs (e.g., connection errors, LLM traces). This allows the user to easily filter the "wall of text" and gives NOVA a structured way to read and diagnose her own system errors.
 
 ### System Engineering Tasks
+*   **ML Feedback Pipeline (RLHF UI)**: Overhaul the Activity Log tab to structure tool executions into discrete blocks (User Prompt -> Tool Executions & JSON Params -> Final Answer). Introduce a visual thumbs-up/thumbs-down ranking system so the user can easily flag successful or hallucinated actions. This data will be piped into an offline dataset for future local LLM fine-tuning or Reinforcement Learning from Human Feedback (RLHF).
 *   **Persistent UI Chat History**: Sync the conversation array to a local file so the chat history is visually maintained in the UI between restarts/cycles.
 *   **Single Instance Lock**: Prevent multiple instances of NOVA's python backend from running simultaneously to avoid port crashing.
 *   **Advanced Tool UI**: Introduce specific "Config" buttons for tools that require configuration, and a "Streamer Mode" toggle per tool to determine if it is safe to execute while live.
