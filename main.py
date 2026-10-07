@@ -577,11 +577,19 @@ def _process_llm_response_inner():
                     tool_data = json.loads(json_str)
 
                     # Ensure it is actually a tool call and not just a random JSON statement
-                    if "name" in tool_data:
-                        tool_name = tool_data.get("name")
+
+                    # LLM might output flat: {"name": "tool", "arguments": {...}}
+                    # Or nested: {"type": "function", "function": {"name": "tool", "arguments": {...}}}
+
+                    target_block = tool_data
+                    if "function" in tool_data and isinstance(tool_data["function"], dict):
+                        target_block = tool_data["function"]
+
+                    if "name" in target_block:
+                        tool_name = target_block.get("name")
 
                         # Grab arguments or parameters depending on how the LLM formatted it
-                        args = tool_data.get("arguments") or tool_data.get("parameters", {})
+                        args = target_block.get("arguments") or target_block.get("parameters", {})
                         if isinstance(args, dict):
                             tool_args_str = json.dumps(args)
                         else:
