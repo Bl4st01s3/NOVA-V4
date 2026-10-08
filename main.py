@@ -34,6 +34,7 @@ import queue
 
 # Queue to hold text tokens to bypass Eel WebSockets
 token_queue = queue.Queue()
+tts_queue = queue.Queue()
 import logging
 import subprocess
 import sounddevice as sd
