@@ -6,7 +6,7 @@ sounddevice==0.4.6
 numpy
 scipy
 psutil
-edge-tts
+piper-tts
 pywin32; sys_platform == 'win32'
 gspread
 pandas

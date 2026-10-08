@@ -734,40 +734,44 @@ def _process_llm_response_inner():
 
 @eel.expose
 def get_tts_voices():
-    """Returns a list of premium Edge TTS neural voices."""
-    return [
-        {"id": "en-GB-RyanNeural", "name": "Ryan (UK Male)"},
-        {"id": "en-GB-SoniaNeural", "name": "Sonia (UK Female)"},
-        {"id": "en-US-AriaNeural", "name": "Aria (US Female)"},
-        {"id": "en-US-GuyNeural", "name": "Guy (US Male)"},
-        {"id": "en-AU-NatashaNeural", "name": "Natasha (AU Female)"},
-        {"id": "en-AU-WilliamNeural", "name": "William (AU Male)"}
-    ]
+    """Returns a list of local Piper TTS voices."""
+    import download_piper_models
+    voice_list = []
+    for vid, data in download_piper_models.VOICES.items():
+        voice_list.append({"id": vid, "name": data["name"], "desc": data["desc"]})
+    return voice_list
 
-current_tts_effect = "futuristic"
+current_dsp_prefs = {}
 
 @eel.expose
 def set_tts_voice(voice_id):
-    """Sets the active voice for the pyttsx3 engine via command queue."""
+    """Sets the active voice for the Piper engine via command queue."""
     if voice_id:
         tts_queue.put({"type": "set_voice", "voice_id": voice_id})
         print_and_log(f"Requested TTS Voice change to: {voice_id}")
 
 @eel.expose
 def set_tts_params(rate, volume, gap=0.2):
-    """Sets the speech rate, volume, and sentence gap for the pyttsx3 engine via command queue."""
+    """Sets the speech rate, volume, and sentence gap for the Piper engine via command queue."""
     tts_queue.put({"type": "set_params", "rate": rate, "volume": volume, "gap": gap})
     print_and_log(f"Requested TTS Params change: Rate={rate}, Volume={volume}, Gap={gap}s")
 
 @eel.expose
-def save_tts_prefs(voice_id, rate, volume, effect, gap=0.2):
-    """Saves TTS preferences to a config file."""
+def set_dsp_prefs(dsp_prefs):
+    """Updates the advanced DSP effects dictionary."""
+    global current_dsp_prefs
+    current_dsp_prefs = dsp_prefs
+    print_and_log(f"Requested DSP Params change: {dsp_prefs}")
+
+@eel.expose
+def save_tts_prefs(voice_id, rate, volume, gap=0.2, dsp_prefs=None):
+    """Saves TTS and DSP preferences to a config file."""
     prefs = {
         "voice_id": voice_id,
         "rate": rate,
         "volume": volume,
-        "effect": effect,
-        "gap": gap
+        "gap": gap,
+        "dsp_prefs": dsp_prefs or {}
     }
     try:
         with open("tts_config.json", "w") as f:
@@ -787,171 +791,227 @@ def load_tts_prefs():
             print_and_log(f"[ERROR] Failed to load TTS prefs: {e}")
     return None
 
-@eel.expose
-def set_tts_effect(effect):
-    """Sets the current DSP audio effect applied to TTS output."""
-    global current_tts_effect
-    current_tts_effect = effect
-    print_and_log(f"TTS Effect set to: {effect}")
+def apply_dsp_effects(audio_data, sample_rate):
+    """Applies a chain of advanced DSP effects based on user preferences."""
+    global current_dsp_prefs
 
-def apply_dsp_effects(audio_data, sample_rate, effect_type):
-    """Applies numpy/scipy math to raw audio array to simulate J.A.R.V.I.S effects."""
-    if effect_type == "natural":
+    # Fast path if DSP is entirely off or empty
+    if not current_dsp_prefs or not current_dsp_prefs.get('enabled', False):
         return audio_data
 
-    # Convert to float for math
+    # Convert to float32 for math
     audio_float = audio_data.astype(np.float32) / 32768.0
 
-    if effect_type == "futuristic":
-        # 1. Simple Chorus/Flanger (Double the track, pitch shift slightly and delay)
-        delay_samples = int(sample_rate * 0.015) # 15ms delay
-        delayed_audio = np.zeros_like(audio_float)
-        delayed_audio[delay_samples:] = audio_float[:-delay_samples]
+    # 1. High-Pass Filter
+    hp_freq = current_dsp_prefs.get('hp_freq', 0)
+    if hp_freq > 20:
+        nyquist = 0.5 * sample_rate
+        cutoff = hp_freq / nyquist
+        if cutoff < 1.0:
+            b, a = signal.butter(4, cutoff, btype='high', analog=False)
+            audio_float = signal.filtfilt(b, a, audio_float)
 
-        # Mix dry and wet
-        mixed = (audio_float * 0.7) + (delayed_audio * 0.3)
+    # 2. Low-Pass Filter
+    lp_freq = current_dsp_prefs.get('lp_freq', 20000)
+    if lp_freq < 20000:
+        nyquist = 0.5 * sample_rate
+        cutoff = lp_freq / nyquist
+        if cutoff < 1.0:
+            b, a = signal.butter(4, cutoff, btype='low', analog=False)
+            audio_float = signal.filtfilt(b, a, audio_float)
 
-        # 2. Convolution Reverb (Simulate a metallic room)
-        # Create an exponentially decaying impulse response
-        ir_length = int(sample_rate * 0.3) # 300ms tail
+    # 3. Distortion/Drive
+    drive = current_dsp_prefs.get('drive', 0.0)
+    if drive > 0.0:
+        # Simple soft clipping distortion: out = tanh(in * (1 + drive*10))
+        gain = 1.0 + (drive * 10.0)
+        audio_float = np.tanh(audio_float * gain)
+        # Compensate for volume boost somewhat
+        audio_float = audio_float / (1.0 + drive * 0.5)
+
+    # 4. Chorus/Flanger
+    chorus_mix = current_dsp_prefs.get('chorus_mix', 0.0)
+    if chorus_mix > 0.0:
+        chorus_depth = current_dsp_prefs.get('chorus_depth', 0.005) # 5ms base delay
+        chorus_rate = current_dsp_prefs.get('chorus_rate', 1.0) # 1 Hz LFO
+
+        # We will do a static delay here for simplicity since true LFO chorus in numpy
+        # requires time-varying resampling which is slow and complex.
+        # This acts more like a static tight doubler/slapback which still sounds very robotic/metallic.
+        delay_samples = int(sample_rate * chorus_depth)
+        if delay_samples > 0:
+            delayed_audio = np.zeros_like(audio_float)
+            delayed_audio[delay_samples:] = audio_float[:-delay_samples]
+            audio_float = (audio_float * (1.0 - chorus_mix)) + (delayed_audio * chorus_mix)
+
+    # 5. Delay (Echo)
+    delay_mix = current_dsp_prefs.get('delay_mix', 0.0)
+    if delay_mix > 0.0:
+        delay_time = current_dsp_prefs.get('delay_time', 0.3)
+        delay_feedback = current_dsp_prefs.get('delay_feedback', 0.3)
+
+        delay_samples = int(sample_rate * delay_time)
+        if delay_samples > 0:
+            # We must extend the array to accommodate the delay tail
+            tail_length = delay_samples * 3 # Allow a few bounces
+            extended_audio = np.pad(audio_float, (0, tail_length), mode='constant')
+
+            # Simple feedback delay line (only doing a few fixed iterations for performance)
+            current_delay = np.zeros_like(extended_audio)
+            current_delay[:len(audio_float)] = audio_float
+
+            wet_signal = np.zeros_like(extended_audio)
+
+            for i in range(3): # 3 bounces
+                bounce = np.zeros_like(extended_audio)
+                offset = delay_samples * (i + 1)
+                if offset < len(extended_audio):
+                    bounce[offset:] = audio_float[:len(extended_audio)-offset] * (delay_feedback ** (i+1))
+                    wet_signal += bounce
+
+            audio_float = (extended_audio * (1.0 - delay_mix)) + (wet_signal * delay_mix)
+
+    # 6. Reverb
+    reverb_mix = current_dsp_prefs.get('reverb_mix', 0.0)
+    if reverb_mix > 0.0:
+        room_size = current_dsp_prefs.get('reverb_size', 0.3)
+
+        # Create an exponentially decaying impulse response based on room size
+        ir_length = int(sample_rate * max(0.1, room_size))
         t = np.linspace(0, 1, ir_length, endpoint=False)
-        impulse = np.exp(-15 * t) * np.random.randn(ir_length)
+        impulse = np.exp(-10 * t) * np.random.randn(ir_length)
 
         # Convolve
-        if len(mixed.shape) > 1:
-            # If the audio is stereo (2D), we must make the impulse 2D as well
-            impulse = impulse[:, np.newaxis]
-            reverb = signal.fftconvolve(mixed, impulse, mode='full', axes=0)[:len(mixed)]
-        else:
-            reverb = signal.fftconvolve(mixed, impulse, mode='full')[:len(mixed)]
+        reverb = signal.fftconvolve(audio_float, impulse, mode='full')[:len(audio_float)]
 
-        # Mix reverb back in lightly
-        final_audio = (mixed * 0.8) + (reverb * 0.1)
+        # Normalize reverb tail
+        if np.max(np.abs(reverb)) > 0:
+            reverb = reverb / np.max(np.abs(reverb))
 
-    elif effect_type == "robotic":
-        # Robotic: hard noise gate + slight distortion + tight reverb
-        mixed = np.where(np.abs(audio_float) < 0.05, 0, audio_float) # Noise gate
-        mixed = np.clip(mixed * 1.5, -1.0, 1.0) # Distort
-        final_audio = mixed
-    else:
-        final_audio = audio_float
+        audio_float = (audio_float * (1.0 - reverb_mix)) + (reverb * reverb_mix)
 
     # Normalize back to 16-bit PCM
-    final_audio = np.clip(final_audio, -1.0, 1.0)
+    final_audio = np.clip(audio_float, -1.0, 1.0)
     return (final_audio * 32767).astype(np.int16)
 
 def tts_worker():
     """
-    Background worker that listens for text in the queue and speaks it using edge-tts.
+    Background worker that listens for text in the queue and speaks it using piper-tts.
     """
     global tts_active
     import os
     import time
-    import subprocess
-    import asyncio
+    from piper import PiperVoice
+    import numpy as np
+    import sounddevice as sd
+    import download_piper_models
 
-    # Ensure temporary folder exists
-    temp_dir = "temp_audio"
-    if not os.path.exists(temp_dir):
-        os.makedirs(temp_dir)
+    # We map WPM (words per minute) to Piper's length_scale.
+    # length_scale > 1 is slower, < 1 is faster. Normal is 1.0 (approx ~150 WPM)
+    current_worker_voice = "en_GB-alba-medium"
+    current_worker_rate = 200 # WPM
+    current_worker_volume = 1.0 # 0.0 to 1.0
+    current_worker_sentence_gap = 0.2
 
-    current_worker_voice = "en-GB-RyanNeural"
-    # edge-tts uses percentages like +0% or +20%
-    current_worker_rate = 0
-    current_worker_volume = 100
-    current_worker_sentence_gap = 0.2 # default
+    piper_model_instance = None
+    loaded_voice_id = None
+
+    def load_voice(voice_id):
+        nonlocal piper_model_instance, loaded_voice_id
+        if voice_id == loaded_voice_id and piper_model_instance is not None:
+            return True
+
+        model_path = os.path.join(download_piper_models.MODELS_DIR, f"{voice_id}.onnx")
+        if not os.path.exists(model_path):
+            print_and_log(f"[TTS WORKER] Downloading model {voice_id} on the fly...")
+            success = download_piper_models.download_voice(voice_id)
+            if not success:
+                return False
+
+        try:
+            print_and_log(f"[TTS WORKER] Loading Piper voice: {voice_id} into memory.")
+            piper_model_instance = PiperVoice.load(model_path)
+            loaded_voice_id = voice_id
+            return True
+        except Exception as e:
+            log_error(f"[TTS WORKER] Failed to load Piper voice {voice_id}: {e}")
+            return False
 
     while True:
         task = tts_queue.get()
         if not task:
             continue
 
-        # We can either receive a raw string (to speak) or a dict (for commands)
         if isinstance(task, dict):
             if task.get("type") == "set_voice":
                 current_worker_voice = task["voice_id"]
                 print_and_log(f"Worker cached TTS Voice preference: {current_worker_voice}")
+                load_voice(current_worker_voice)
             elif task.get("type") == "set_params":
-                # Pyttsx3 rate was ~200 WPM default. Edge-TTS is % based.
-                # Let's map 200 to +0%, 300 to +50%, 100 to -50%
                 if "rate" in task:
-                    raw_rate = int(task["rate"])
-                    rate_pct = int(((raw_rate - 200) / 200) * 100)
-                    current_worker_rate = rate_pct
-
-                # Volume from 0.0 - 1.0 mapped to %
+                    current_worker_rate = float(task["rate"])
                 if "volume" in task:
-                    raw_vol = float(task["volume"])
-                    vol_pct = int(raw_vol * 100)
-                    current_worker_volume = vol_pct
-
+                    current_worker_volume = float(task["volume"])
                 if "gap" in task:
                     current_worker_sentence_gap = float(task["gap"])
-                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}%, Volume={current_worker_volume}%, Gap={current_worker_sentence_gap}")
+                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}, Volume={current_worker_volume}, Gap={current_worker_sentence_gap}")
             continue
 
-        # Otherwise it's text to speak
         text = task
         tts_active = True
 
-        # edge-tts outputs MP3. We need it as WAV for numpy DSP.
-        # Since sounddevice can't natively play mp3 easily, we will output to mp3 and convert to wav using ffmpeg if needed,
-        # OR edge-tts has a python API we can use directly.
-        # Actually edge-tts CLI doesn't easily output WAV. We will just use the python API which gives us raw bytes.
-
-        import edge_tts
-
-        rate_str = f"+{current_worker_rate}%" if current_worker_rate >= 0 else f"{current_worker_rate}%"
-        # Edge volume is relative to normal (e.g. +0% is normal, -50% is half, +50% is loud)
-        # If user volume is 100 (1.0), that's +0%. If 50 (0.5), that's -50%.
-        vol_relative = current_worker_volume - 100
-        vol_str = f"+{vol_relative}%" if vol_relative >= 0 else f"{vol_relative}%"
-
-        temp_mp3 = os.path.join(temp_dir, "speech.mp3")
-        temp_wav = os.path.join(temp_dir, "speech.wav")
-        print_and_log(f"[TTS WORKER] Generating audio via edge-tts: {text}")
-
         try:
-            # We must run asyncio synchronously here
-            async def generate_audio():
-                communicate = edge_tts.Communicate(text, current_worker_voice, rate=rate_str, volume=vol_str)
-                await communicate.save(temp_mp3)
+            if not piper_model_instance:
+                success = load_voice(current_worker_voice)
+                if not success:
+                    raise Exception("Failed to load a valid voice model.")
 
-            asyncio.run(generate_audio())
+            # Map WPM to length_scale
+            # If 150 WPM = 1.0 length scale
+            # Then 300 WPM = 0.5 length scale
+            base_wpm = 150.0
+            length_scale = base_wpm / max(current_worker_rate, 50.0)
 
-            if os.path.exists(temp_mp3):
-                import pygame
+            print_and_log(f"[TTS WORKER] Generating audio via piper: {text}")
 
-                # Edge TTS natively generates MP3s. On Windows, Pygame plays them perfectly without needing FFmpeg.
-                try:
-                    pygame.mixer.init()
-                    pygame.mixer.music.load(temp_mp3)
-                    pygame.mixer.music.play()
+            # Piper synthesize returns an iterator of audio frames (int16 bytes)
+            # We will collect them all into a numpy array so we can apply DSP before playing.
+            import piper.config
+            syn_config = piper.config.SynthesisConfig(length_scale=length_scale)
+            audio_stream = piper_model_instance.synthesize(text, syn_config=syn_config)
 
-                    while pygame.mixer.music.get_busy():
-                        time.sleep(0.1)
+            audio_bytes = b""
+            for chunk in audio_stream:
+                audio_bytes += chunk.audio_int16_bytes
 
-                    pygame.mixer.quit()
-                    print_and_log(f"[TTS WORKER] Playback finished for this sentence.")
-                    time.sleep(current_worker_sentence_gap)
-                except Exception as play_err:
-                    log_error(f"[TTS WORKER] Failed to play audio using Pygame: {play_err}")
+            if audio_bytes:
+                # Convert raw PCM16 bytes to numpy array
+                audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
+                sample_rate = piper_model_instance.config.sample_rate
+
+                # DSP processing will be added here
+                # apply_dsp_effects() expects int16, converts to float32 inside, and returns int16
+                processed_audio = apply_dsp_effects(audio_data, sample_rate)
+
+                # Apply Volume scaling
+                processed_float = processed_audio.astype(np.float32) * current_worker_volume
+                processed_audio = np.clip(processed_float, -32768, 32767).astype(np.int16)
+
+                # Play using sounddevice
+                sd.play(processed_audio, samplerate=sample_rate)
+                sd.wait() # Block until audio is finished playing
+
+                print_and_log(f"[TTS WORKER] Playback finished for this sentence.")
+                time.sleep(current_worker_sentence_gap)
             else:
-                log_error(f"[TTS WORKER] Edge-TTS failed to create MP3 file.")
+                log_error("[TTS WORKER] Piper returned no audio bytes.")
 
         except Exception as e:
             import traceback
             error_trace = traceback.format_exc()
             log_error(f"[TTS WORKER] CRITICAL ERROR: {error_trace}")
         finally:
-            if os.path.exists(temp_mp3):
-                try: os.remove(temp_mp3)
-                except: pass
-            if os.path.exists(temp_wav):
-                try: os.remove(temp_wav)
-                except: pass
-
-        tts_active = False
+            tts_active = False
 
 # Start the TTS worker thread
 threading.Thread(target=tts_worker, daemon=True).start()
