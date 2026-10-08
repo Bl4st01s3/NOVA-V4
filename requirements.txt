@@ -6,9 +6,10 @@ sounddevice==0.4.6
 numpy
 scipy
 psutil
-pyttsx3
+edge-tts
 pywin32; sys_platform == 'win32'
 gspread
 pandas
 openpyxl
 google-auth
+pygame
