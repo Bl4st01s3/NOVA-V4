@@ -640,6 +640,8 @@ document.addEventListener("DOMContentLoaded", () => {
             const rateDisplay = document.getElementById('tts-rate-display');
             const volSlider = document.getElementById('tts-volume-slider');
             const volDisplay = document.getElementById('tts-volume-display');
+            const gapSlider = document.getElementById('tts-gap-slider');
+            const gapDisplay = document.getElementById('tts-gap-display');
             const effectSelect = document.getElementById('tts-effect-select');
 
             if (savedPrefs) {
@@ -652,12 +654,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     volSlider.value = savedPrefs.volume;
                     volDisplay.innerText = `${Math.round(savedPrefs.volume * 100)}%`;
                 }
+                if (savedPrefs.gap !== undefined) {
+                    gapSlider.value = savedPrefs.gap;
+                    gapDisplay.innerText = `${Math.round(savedPrefs.gap * 1000)} ms`;
+                }
                 if (savedPrefs.effect) effectSelect.value = savedPrefs.effect;
 
                 // apply instantly
                 try {
                     eel.set_tts_voice(voiceSelect.value)();
-                    eel.set_tts_params(rateSlider.value, volSlider.value)();
+                    eel.set_tts_params(rateSlider.value, volSlider.value, gapSlider.value)();
                     eel.set_tts_effect(effectSelect.value)();
                 } catch(e){}
             } else {
@@ -672,7 +678,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 voiceSelect.value = bestMatch;
                 try {
                     eel.set_tts_voice(bestMatch)();
-                    eel.set_tts_params(rateSlider.value, volSlider.value)();
+                    eel.set_tts_params(rateSlider.value, volSlider.value, gapSlider.value)();
                 } catch(e){}
             }
 
@@ -683,6 +689,9 @@ document.addEventListener("DOMContentLoaded", () => {
             volSlider.addEventListener('input', () => {
                 volDisplay.innerText = `${Math.round(volSlider.value * 100)}%`;
             });
+            gapSlider.addEventListener('input', () => {
+                gapDisplay.innerText = `${Math.round(gapSlider.value * 1000)} ms`;
+            });
 
             // Save Button Logic
             const saveBtn = document.getElementById('save-tts-btn');
@@ -691,13 +700,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     const vid = voiceSelect.value;
                     const r = rateSlider.value;
                     const v = volSlider.value;
+                    const g = gapSlider.value;
                     const ef = effectSelect.value;
 
                     try {
                         eel.set_tts_voice(vid)();
-                        eel.set_tts_params(r, v)();
+                        eel.set_tts_params(r, v, g)();
                         eel.set_tts_effect(ef)();
-                        eel.save_tts_prefs(vid, parseInt(r), parseFloat(v), ef)();
+                        eel.save_tts_prefs(vid, parseInt(r), parseFloat(v), ef, parseFloat(g))();
 
                         saveBtn.innerText = "SAVED!";
                         saveBtn.style.color = "#0f0";

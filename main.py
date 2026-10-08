@@ -747,19 +747,20 @@ def set_tts_voice(voice_id):
         print_and_log(f"Requested TTS Voice change to: {voice_id}")
 
 @eel.expose
-def set_tts_params(rate, volume):
-    """Sets the speech rate and volume for the pyttsx3 engine via command queue."""
-    tts_queue.put({"type": "set_params", "rate": rate, "volume": volume})
-    print_and_log(f"Requested TTS Params change: Rate={rate}, Volume={volume}")
+def set_tts_params(rate, volume, gap=0.2):
+    """Sets the speech rate, volume, and sentence gap for the pyttsx3 engine via command queue."""
+    tts_queue.put({"type": "set_params", "rate": rate, "volume": volume, "gap": gap})
+    print_and_log(f"Requested TTS Params change: Rate={rate}, Volume={volume}, Gap={gap}s")
 
 @eel.expose
-def save_tts_prefs(voice_id, rate, volume, effect):
+def save_tts_prefs(voice_id, rate, volume, effect, gap=0.2):
     """Saves TTS preferences to a config file."""
     prefs = {
         "voice_id": voice_id,
         "rate": rate,
         "volume": volume,
-        "effect": effect
+        "effect": effect,
+        "gap": gap
     }
     try:
         with open("tts_config.json", "w") as f:
@@ -862,9 +863,17 @@ def tts_worker():
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
 
+    # Initialize a single persistent engine for the worker thread
+    tts_engine = None
+    try:
+        tts_engine = pyttsx3.init()
+    except Exception as e:
+        log_error(f"Failed to initialize TTS engine: {e}")
+
     current_worker_voice = None
     current_worker_rate = 200 # default
     current_worker_volume = 1.0 # default
+    current_worker_sentence_gap = 0.2 # default
 
     while True:
         task = tts_queue.get()
@@ -881,7 +890,9 @@ def tts_worker():
                     current_worker_rate = int(task["rate"])
                 if "volume" in task:
                     current_worker_volume = float(task["volume"])
-                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}, Volume={current_worker_volume}")
+                if "gap" in task:
+                    current_worker_sentence_gap = float(task["gap"])
+                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}, Volume={current_worker_volume}, Gap={current_worker_sentence_gap}")
             continue
 
         # Otherwise it's text to speak
@@ -890,10 +901,11 @@ def tts_worker():
         temp_file = os.path.join(temp_dir, "speech.wav")
         print_and_log(f"[TTS WORKER] Picked up text from queue: {text}")
 
-        # Initialize a completely fresh engine per sentence to avoid COM memory deadlocks
-        tts_engine = None
         try:
-            tts_engine = pyttsx3.init()
+            if not tts_engine:
+                log_error("[TTS WORKER] Engine not initialized.")
+                continue
+
             if current_worker_voice:
                 tts_engine.setProperty('voice', current_worker_voice)
             tts_engine.setProperty('rate', current_worker_rate)
@@ -918,6 +930,9 @@ def tts_worker():
                 sd.play(processed_audio, sample_rate)
                 sd.wait() # Block until playing is finished
                 print_and_log(f"[TTS WORKER] Playback finished for this sentence.")
+
+                # Apply custom user sentence gap
+                time.sleep(current_worker_sentence_gap)
             else:
                 log_error(f"[TTS WORKER] Temporary wav file {temp_file} was not created!")
 
@@ -926,10 +941,6 @@ def tts_worker():
             error_trace = traceback.format_exc()
             log_error(f"[TTS WORKER] CRITICAL ERROR: {error_trace}")
         finally:
-            # Must forcibly delete the COM instance of the engine to allow the next loop to live
-            if tts_engine:
-                del tts_engine
-
             # Cleanup temp file
             if os.path.exists(temp_file):
                 try:
@@ -1535,7 +1546,7 @@ def start_app():
             global current_tts_effect
             current_tts_effect = prefs["effect"]
         set_tts_voice(prefs.get("voice_id"))
-        set_tts_params(prefs.get("rate", 200), prefs.get("volume", 1.0))
+        set_tts_params(prefs.get("rate", 200), prefs.get("volume", 1.0), prefs.get("gap", 0.2))
 
     # Start the webhook API in a daemon thread so it dies when the main app closes
     threading.Thread(target=run_presence_server, daemon=True).start()
