@@ -219,13 +219,64 @@
                             <input type="range" id="tts-gap-slider" min="0" max="2" step="0.05" value="0.2" style="width: 100%; accent-color: var(--neon-cyan); cursor: pointer; margin-bottom: 15px;">
                         </div>
 
-                        <div class="form-group">
-                            <label>Voice Effect</label>
-                            <select id="tts-effect-select" class="cyber-input">
-                                <option value="futuristic">Futuristic AI (Reverb + Chorus)</option>
-                                <option value="robotic">Clean Robotic</option>
-                                <option value="natural">Natural (No Effects)</option>
-                            </select>
+                        <div class="form-group" style="border: 1px solid var(--border-color); padding: 10px; margin-top: 15px;">
+                            <label style="display: flex; justify-content: space-between;">
+                                <span>Advanced DSP Effects</span>
+                                <input type="checkbox" id="dsp-enabled" style="cursor: pointer;">
+                            </label>
+
+                            <!-- Filters -->
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>High-Pass Filter (Hz)</span>
+                                <span id="dsp-hp-display" style="color: var(--cyan);">0 Hz</span>
+                            </label>
+                            <input type="range" id="dsp-hp-slider" min="0" max="1000" step="10" value="0" style="width: 100%; accent-color: var(--cyan); cursor: pointer;">
+
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Low-Pass Filter (Hz)</span>
+                                <span id="dsp-lp-display" style="color: var(--cyan);">20000 Hz</span>
+                            </label>
+                            <input type="range" id="dsp-lp-slider" min="500" max="20000" step="100" value="20000" style="width: 100%; accent-color: var(--cyan); cursor: pointer;">
+
+                            <!-- Drive -->
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Distortion / Drive</span>
+                                <span id="dsp-drive-display" style="color: var(--cyan);">0.0</span>
+                            </label>
+                            <input type="range" id="dsp-drive-slider" min="0" max="1" step="0.05" value="0" style="width: 100%; accent-color: var(--red); cursor: pointer;">
+
+                            <!-- Chorus -->
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Chorus Mix</span>
+                                <span id="dsp-chorus-mix-display" style="color: var(--cyan);">0.0</span>
+                            </label>
+                            <input type="range" id="dsp-chorus-mix-slider" min="0" max="1" step="0.05" value="0" style="width: 100%; accent-color: var(--purple); cursor: pointer;">
+
+                            <!-- Delay -->
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Delay Mix</span>
+                                <span id="dsp-delay-mix-display" style="color: var(--cyan);">0.0</span>
+                            </label>
+                            <input type="range" id="dsp-delay-mix-slider" min="0" max="1" step="0.05" value="0" style="width: 100%; accent-color: var(--neon-cyan); cursor: pointer;">
+
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Delay Time (s)</span>
+                                <span id="dsp-delay-time-display" style="color: var(--cyan);">0.3 s</span>
+                            </label>
+                            <input type="range" id="dsp-delay-time-slider" min="0.01" max="1.0" step="0.01" value="0.3" style="width: 100%; accent-color: var(--neon-cyan); cursor: pointer;">
+
+                            <!-- Reverb -->
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Reverb Mix</span>
+                                <span id="dsp-reverb-mix-display" style="color: var(--cyan);">0.0</span>
+                            </label>
+                            <input type="range" id="dsp-reverb-mix-slider" min="0" max="1" step="0.05" value="0" style="width: 100%; accent-color: var(--purple); cursor: pointer;">
+
+                            <label style="display: flex; justify-content: space-between; font-size: 0.85em; margin-top: 10px;">
+                                <span>Reverb Room Size</span>
+                                <span id="dsp-reverb-size-display" style="color: var(--cyan);">0.3</span>
+                            </label>
+                            <input type="range" id="dsp-reverb-size-slider" min="0.1" max="1.0" step="0.05" value="0.3" style="width: 100%; accent-color: var(--purple); cursor: pointer;">
                         </div>
 
                         <button class="cyber-btn" id="save-tts-btn" style="margin-top: 10px; width: 100%;">

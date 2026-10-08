@@ -642,7 +642,39 @@ document.addEventListener("DOMContentLoaded", () => {
             const volDisplay = document.getElementById('tts-volume-display');
             const gapSlider = document.getElementById('tts-gap-slider');
             const gapDisplay = document.getElementById('tts-gap-display');
-            const effectSelect = document.getElementById('tts-effect-select');
+
+            // DSP Elements
+            const dspEnabled = document.getElementById('dsp-enabled');
+            const dspHpSlider = document.getElementById('dsp-hp-slider');
+            const dspHpDisplay = document.getElementById('dsp-hp-display');
+            const dspLpSlider = document.getElementById('dsp-lp-slider');
+            const dspLpDisplay = document.getElementById('dsp-lp-display');
+            const dspDriveSlider = document.getElementById('dsp-drive-slider');
+            const dspDriveDisplay = document.getElementById('dsp-drive-display');
+            const dspChorusSlider = document.getElementById('dsp-chorus-mix-slider');
+            const dspChorusDisplay = document.getElementById('dsp-chorus-mix-display');
+            const dspDelayMixSlider = document.getElementById('dsp-delay-mix-slider');
+            const dspDelayMixDisplay = document.getElementById('dsp-delay-mix-display');
+            const dspDelayTimeSlider = document.getElementById('dsp-delay-time-slider');
+            const dspDelayTimeDisplay = document.getElementById('dsp-delay-time-display');
+            const dspReverbMixSlider = document.getElementById('dsp-reverb-mix-slider');
+            const dspReverbMixDisplay = document.getElementById('dsp-reverb-mix-display');
+            const dspReverbSizeSlider = document.getElementById('dsp-reverb-size-slider');
+            const dspReverbSizeDisplay = document.getElementById('dsp-reverb-size-display');
+
+            function getDspPrefs() {
+                return {
+                    enabled: dspEnabled.checked,
+                    hp_freq: parseInt(dspHpSlider.value),
+                    lp_freq: parseInt(dspLpSlider.value),
+                    drive: parseFloat(dspDriveSlider.value),
+                    chorus_mix: parseFloat(dspChorusSlider.value),
+                    delay_mix: parseFloat(dspDelayMixSlider.value),
+                    delay_time: parseFloat(dspDelayTimeSlider.value),
+                    reverb_mix: parseFloat(dspReverbMixSlider.value),
+                    reverb_size: parseFloat(dspReverbSizeSlider.value)
+                };
+            }
 
             if (savedPrefs) {
                 if (savedPrefs.voice_id) voiceSelect.value = savedPrefs.voice_id;
@@ -658,13 +690,24 @@ document.addEventListener("DOMContentLoaded", () => {
                     gapSlider.value = savedPrefs.gap;
                     gapDisplay.innerText = `${Math.round(savedPrefs.gap * 1000)} ms`;
                 }
-                if (savedPrefs.effect) effectSelect.value = savedPrefs.effect;
+                if (savedPrefs.dsp_prefs) {
+                    let d = savedPrefs.dsp_prefs;
+                    if(d.enabled !== undefined) dspEnabled.checked = d.enabled;
+                    if(d.hp_freq !== undefined) { dspHpSlider.value = d.hp_freq; dspHpDisplay.innerText = d.hp_freq + " Hz"; }
+                    if(d.lp_freq !== undefined) { dspLpSlider.value = d.lp_freq; dspLpDisplay.innerText = d.lp_freq + " Hz"; }
+                    if(d.drive !== undefined) { dspDriveSlider.value = d.drive; dspDriveDisplay.innerText = d.drive; }
+                    if(d.chorus_mix !== undefined) { dspChorusSlider.value = d.chorus_mix; dspChorusDisplay.innerText = d.chorus_mix; }
+                    if(d.delay_mix !== undefined) { dspDelayMixSlider.value = d.delay_mix; dspDelayMixDisplay.innerText = d.delay_mix; }
+                    if(d.delay_time !== undefined) { dspDelayTimeSlider.value = d.delay_time; dspDelayTimeDisplay.innerText = d.delay_time + " s"; }
+                    if(d.reverb_mix !== undefined) { dspReverbMixSlider.value = d.reverb_mix; dspReverbMixDisplay.innerText = d.reverb_mix; }
+                    if(d.reverb_size !== undefined) { dspReverbSizeSlider.value = d.reverb_size; dspReverbSizeDisplay.innerText = d.reverb_size; }
+                }
 
                 // apply instantly
                 try {
                     eel.set_tts_voice(voiceSelect.value)();
                     eel.set_tts_params(rateSlider.value, volSlider.value, gapSlider.value)();
-                    eel.set_tts_effect(effectSelect.value)();
+                    eel.set_dsp_prefs(getDspPrefs())();
                 } catch(e){}
             } else {
                 // Initial defaults fallback
@@ -693,6 +736,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 gapDisplay.innerText = `${Math.round(gapSlider.value * 1000)} ms`;
             });
 
+            // DSP updates
+            dspHpSlider.addEventListener('input', () => dspHpDisplay.innerText = dspHpSlider.value + " Hz");
+            dspLpSlider.addEventListener('input', () => dspLpDisplay.innerText = dspLpSlider.value + " Hz");
+            dspDriveSlider.addEventListener('input', () => dspDriveDisplay.innerText = dspDriveSlider.value);
+            dspChorusSlider.addEventListener('input', () => dspChorusDisplay.innerText = dspChorusSlider.value);
+            dspDelayMixSlider.addEventListener('input', () => dspDelayMixDisplay.innerText = dspDelayMixSlider.value);
+            dspDelayTimeSlider.addEventListener('input', () => dspDelayTimeDisplay.innerText = dspDelayTimeSlider.value + " s");
+            dspReverbMixSlider.addEventListener('input', () => dspReverbMixDisplay.innerText = dspReverbMixSlider.value);
+            dspReverbSizeSlider.addEventListener('input', () => dspReverbSizeDisplay.innerText = dspReverbSizeSlider.value);
+
             // Save Button Logic
             const saveBtn = document.getElementById('save-tts-btn');
             if(saveBtn) {
@@ -701,13 +754,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     const r = rateSlider.value;
                     const v = volSlider.value;
                     const g = gapSlider.value;
-                    const ef = effectSelect.value;
+                    const dspPrefs = getDspPrefs();
 
                     try {
                         eel.set_tts_voice(vid)();
                         eel.set_tts_params(r, v, g)();
-                        eel.set_tts_effect(ef)();
-                        eel.save_tts_prefs(vid, parseInt(r), parseFloat(v), ef, parseFloat(g))();
+                        eel.set_dsp_prefs(dspPrefs)();
+                        eel.save_tts_prefs(vid, parseInt(r), parseFloat(v), parseFloat(g), dspPrefs)();
 
                         saveBtn.innerText = "SAVED!";
                         saveBtn.style.color = "#0f0";

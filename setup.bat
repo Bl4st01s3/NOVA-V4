@@ -12,6 +12,9 @@ call venv\Scripts\activate.bat
 echo [3/3] Installing Dependencies...
 pip install -r requirements.txt
 
+echo [4/4] Downloading Default Piper TTS Model...
+python download_piper_models.py
+
 echo ==========================================
 echo Setup Complete! You can now run run.bat
 echo ==========================================
