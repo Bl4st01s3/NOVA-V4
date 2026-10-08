@@ -1,0 +1,15 @@
+{
+    "router_keywords": [
+        "weather",
+        "temperature",
+        "forecast",
+        "raining",
+        "sunny",
+        "how is it outside"
+    ],
+    "processing_messages": [
+        "Checking the local weather...",
+        "Pulling the latest forecast...",
+        "Let me look outside..."
+    ]
+}

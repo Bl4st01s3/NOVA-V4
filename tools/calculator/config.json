@@ -1,3 +1,18 @@
 {
-    "pronunciation": "calculator"
+    "pronunciation": "calculator",
+    "router_keywords": [
+        "calculate",
+        "math",
+        "equation",
+        "plus",
+        "minus",
+        "times",
+        "divided by",
+        "what is"
+    ],
+    "processing_messages": [
+        "Crunching the numbers...",
+        "Running the calculation...",
+        "Just a moment while I calculate that..."
+    ]
 }

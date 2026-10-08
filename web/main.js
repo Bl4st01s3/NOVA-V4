@@ -1032,8 +1032,18 @@ function createInputForValue(key, value, isSchemaBlock = false) {
             inputElement.appendChild(opt);
         });
     }
+
+    // Arrays (like router_keywords) mapped to comma-separated strings
+    else if (Array.isArray(value)) {
+        inputElement = document.createElement('input');
+        inputElement.type = "text";
+        inputElement.value = value.join(", ");
+        inputElement.className = "cyber-input config-input-text";
+        inputElement.placeholder = "comma separated values";
+    }
     // Standard Inputs
     else if (typeof value === "boolean") {
+
         inputElement = document.createElement('input');
         inputElement.type = "checkbox";
         inputElement.checked = value;
@@ -1370,7 +1380,10 @@ document.getElementById('save-config-btn').addEventListener('click', async () =>
                      if(input) {
                          let val = input.value;
                          if (input.type === 'checkbox') val = input.checked;
-                         if (input.type === 'number') val = parseFloat(input.value);
+                         else if (input.type === 'number') val = parseFloat(input.value);
+                         else if (realKey === 'router_keywords' || realKey === 'processing_messages') {
+                             val = val.split(',').map(s => s.trim()).filter(s => s);
+                         }
                          newConfig[realKey] = val;
                      }
                  }
