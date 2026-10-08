@@ -1,5 +1,18 @@
 {
     "pi_ip": "192.168.1.100",
     "pi_port": 5000,
-    "api_key": "YOUR_SECRET_KEY"
+    "api_key": "YOUR_SECRET_KEY",
+    "router_keywords": [
+        "banana pi",
+        "nervous system",
+        "overnight",
+        "while I was away",
+        "events",
+        "logs"
+    ],
+    "processing_messages": [
+        "Querying the Nervous System...",
+        "Connecting to the Banana Pi...",
+        "Pulling the latest event logs..."
+    ]
 }

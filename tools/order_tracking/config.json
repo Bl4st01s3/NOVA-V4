@@ -1,104 +1,102 @@
 {
-  "Sync_Settings": {
-     "Sync_Mode": "Both",
-     "Sync_Priority": "Cloud First",
-     "Backup_Interval_Hours": 168,
-     "File_Type": "Spreadsheet"
-  },
-
-  "Cloud_Connection": {
-     "Service": "Google Drive",
-     "File_ID_or_Path": "",
-     "Credentials_File": "google_credentials.json",
-     "Access_Key": "",
-     "Time_Out": 5,
-     "Max_Retries": 2
-  },
-
-  "Local_Connection": {
-    "File_Path": "",
-    "Allow_Offline_Writes": true
-  },
-
-  "schema": {
-    "Item": {
-      "Column": "A",
-      "Type": "string"
+    "Sync_Settings": {
+        "Sync_Mode": "Both",
+        "Sync_Priority": "Cloud First",
+        "Backup_Interval_Hours": 168,
+        "File_Type": "Spreadsheet"
     },
-
-    "Retailer": {
-      "Column": "B",
-      "Type": "string"
+    "Cloud_Connection": {
+        "Service": "Google Drive",
+        "File_ID_or_Path": "",
+        "Credentials_File": "google_credentials.json",
+        "Access_Key": "",
+        "Time_Out": 5,
+        "Max_Retries": 2
     },
-
-    "Order Date": {
-      "Column": "C",
-      "Type": "date",
-      "Format": "dd/mm/yyyy"
+    "Local_Connection": {
+        "File_Path": "",
+        "Allow_Offline_Writes": true
     },
-
-    "Quantity": {
-      "Column": "D",
-      "Type": "int"
+    "schema": {
+        "Item": {
+            "Column": "A",
+            "Type": "string"
+        },
+        "Retailer": {
+            "Column": "B",
+            "Type": "string"
+        },
+        "Order Date": {
+            "Column": "C",
+            "Type": "date",
+            "Format": "dd/mm/yyyy"
+        },
+        "Quantity": {
+            "Column": "D",
+            "Type": "int"
+        },
+        "Delivery Window Start": {
+            "Column": "E",
+            "Type": "date",
+            "Format": "dd/mm/yyyy"
+        },
+        "Delivery Window End": {
+            "Column": "F",
+            "Type": "date",
+            "Format": "dd/mm/yyyy"
+        },
+        "Issues": {
+            "Column": "G",
+            "Type": "string"
+        },
+        "Dispatched": {
+            "Column": "H",
+            "Type": "boolean"
+        },
+        "Delivered": {
+            "Column": "I",
+            "Type": "boolean"
+        },
+        "Actual_Date_of_Delivery": {
+            "Column": "J",
+            "Type": "date",
+            "Format": "dd/mm/yyyy"
+        },
+        "Delivery_Status_Days": {
+            "Column": "K",
+            "Type": "formula",
+            "Template": "=IF(OR(ISBLANK(E[ROW_NUM]), ISBLANK(J[ROW_NUM])), \"\", J[ROW_NUM] - E[ROW_NUM])"
+        },
+        "Courier": {
+            "Column": "L",
+            "Type": "string"
+        },
+        "Order_Number": {
+            "Column": "M",
+            "Type": "string"
+        },
+        "Tracking_Number": {
+            "Column": "N",
+            "Type": "string"
+        }
     },
-
-    "Delivery Window Start": {
-      "Column": "E",
-      "Type": "date",
-      "Format": "dd/mm/yyyy"
+    "Tracker": {
+        "API": "",
+        "API_KEY": ""
     },
-
-    "Delivery Window End": {
-      "Column": "F",
-      "Type": "date",
-      "Format": "dd/mm/yyyy"
-    },
-
-    "Issues": {
-      "Column": "G",
-      "Type": "string"
-    },
-
-    "Dispatched": {
-      "Column": "H",
-      "Type": "boolean"
-    },
-
-    "Delivered": {
-      "Column": "I",
-      "Type": "boolean"
-    },
-
-    "Actual_Date_of_Delivery": {
-      "Column": "J",
-      "Type": "date",
-      "Format": "dd/mm/yyyy"
-    },
-
-    "Delivery_Status_Days": {
-      "Column": "K",
-      "Type": "formula",
-      "Template": "=IF(OR(ISBLANK(E[ROW_NUM]), ISBLANK(J[ROW_NUM])), \"\", J[ROW_NUM] - E[ROW_NUM])"
-    },
-
-    "Courier": {
-      "Column": "L",
-      "Type": "string"
-    },
-
-    "Order_Number": {
-      "Column": "M",
-      "Type": "string"
-    },
-
-    "Tracking_Number": {
-      "Column": "N",
-      "Type": "string"
-    }
-  },
-
-  "Tracker": {
-      "API": "",
-      "API_KEY": ""
-  }
+    "router_keywords": [
+        "order",
+        "package",
+        "delivery",
+        "track",
+        "dispatch",
+        "courier",
+        "when will it arrive",
+        "where is my package"
+    ],
+    "processing_messages": [
+        "Accessing the tracking database...",
+        "Checking courier statuses...",
+        "Syncing with the order sheet..."
+    ]
 }

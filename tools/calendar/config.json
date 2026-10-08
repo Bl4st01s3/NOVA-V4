@@ -1,0 +1,15 @@
+{
+    "router_keywords": [
+        "calendar",
+        "schedule",
+        "meeting",
+        "appointment",
+        "what's next",
+        "my day"
+    ],
+    "processing_messages": [
+        "Checking your schedule...",
+        "Pulling up your calendar...",
+        "Let me check your appointments..."
+    ]
+}

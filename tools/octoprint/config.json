@@ -1,3 +1,15 @@
 {
-    "pronunciation": "ock-toe-print"
+    "pronunciation": "ock-toe-print",
+    "router_keywords": [
+        "printer",
+        "octoprint",
+        "print status",
+        "3d printer",
+        "printing"
+    ],
+    "processing_messages": [
+        "Connecting to OctoPrint...",
+        "Checking the printer status...",
+        "Pinging the 3D printer..."
+    ]
 }

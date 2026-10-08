@@ -1,3 +1,15 @@
 {
-    "pronunciation": "memory manager"
+    "pronunciation": "memory manager",
+    "router_keywords": [
+        "remember",
+        "forget",
+        "memory",
+        "preference",
+        "fact"
+    ],
+    "processing_messages": [
+        "Accessing my memory banks...",
+        "Updating your preferences...",
+        "Let me check my notes..."
+    ]
 }

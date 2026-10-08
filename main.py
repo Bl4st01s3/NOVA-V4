@@ -460,6 +460,37 @@ def build_tools_array():
 
     return tools_array
 
+
+def intent_router(user_text):
+    """
+    Scans the user text against tool keywords to determine if a tool is needed.
+    Returns the tool_name if matched, otherwise None.
+    """
+    import json
+    import os
+
+    text_lower = user_text.lower()
+    available_tools = get_available_tools()
+
+    for tool in available_tools:
+        if not active_llm_tools.get(tool, True):
+            continue
+
+        config_path = os.path.join("tools", tool, "config.json")
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    keywords = config.get("router_keywords", [])
+                    # Simple keyword matching for now
+                    for keyword in keywords:
+                        if keyword.lower() in text_lower:
+                            return tool
+            except Exception as e:
+                log_error(f"Failed to read keywords for {tool}: {e}")
+
+    return None
+
 def _process_llm_response_inner():
     # Notify OBS Overlay that we are processing/talking
     try:
@@ -487,126 +518,21 @@ def _process_llm_response_inner():
 
         print_and_log(f"Using model: {ACTIVE_MODEL_ID}")
 
-        tools_array = build_tools_array()
+        # Check if the last message was from the user
+        last_user_text = ""
+        if len(conversation_history) > 0 and conversation_history[-1]["role"] == "user":
+            last_user_text = conversation_history[-1]["content"]
 
-        # Build the payload arguments.
-        kwargs = {
-            "model": ACTIVE_MODEL_ID,
-            "messages": conversation_history,
-            "temperature": 0.7,
-            "stream": True
-        }
-
-        # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
-        if tools_array:
-            kwargs["tools"] = tools_array
-            kwargs["tool_choice"] = "auto"
-
-            # Check if the current prompt is the boot sequence, where we specifically don't want it using tools
-            if len(conversation_history) > 0 and "The system has just successfully booted up." in str(conversation_history[-1].get("content", "")):
-                # LM Studio's Llama.cpp backend crashes with a peg-native parsing error if tool_choice="none"
-                # is passed but the model attempts to generate JSON anyway. Instead of "none", we use "auto"
-                # but append an explicit system instruction not to use tools to avoid the crash.
-                pass
-
-        # Call the local LM Studio server
-        response = client.chat.completions.create(**kwargs)
-
-        ai_text = ""
-        sentence_buffer = ""
+        # 1. Run the Intent Router to see if a tool is needed based on keywords
+        # Only route if it's not the hidden boot sequence
         tool_name = None
-        tool_args_str = ""
-        is_manual_tool_call = False
-        is_silenced = False
+        if "[SYSTEM_BOOT_SEQUENCE]" not in last_user_text and "The system has just successfully booted up." not in last_user_text:
+             tool_name = intent_router(last_user_text)
 
-        # Iterate over the streamed chunks
-        for chunk in response:
-            delta = chunk.choices[0].delta
-
-            # Handle Native Tool Calls
-            if delta.tool_calls:
-                tc = delta.tool_calls[0]
-                if tc.function:
-                    if tc.function.name:
-                        tool_name = tc.function.name
-                    if tc.function.arguments:
-                        tool_args_str += tc.function.arguments
-
-            # Handle Standard Content Streaming
-            elif delta.content is not None:
-                token = delta.content
-                # Strip leading double quotes if it's the very first token
-                if len(ai_text) == 0 and token.startswith('"'):
-                    token = token[1:]
-
-                ai_text += token
-                sentence_buffer += token
-
-                # If we detect the start of a JSON block, instantly silence the stream to prevent it from speaking JSON
-                if "{\"type\": \"function\"" in ai_text or "{\"name\":" in ai_text:
-                    is_silenced = True
-                    is_manual_tool_call = True
-
-                if not is_silenced:
-                    token_queue.put(token)
-                    # Check for sentence completion (punctuation followed by a space or newline) to feed the TTS engine
-                    for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
-                        if punc in sentence_buffer:
-                            parts = sentence_buffer.split(punc, 1)
-                            # Add the stripped punctuation back to the sentence
-                            sentence_to_speak = parts[0] + punc.strip()
-                            if sentence_to_speak.strip():
-                                # Clean the text (remove underscores, json brackets, markdown) before speaking
-                                clean_speech = clean_text_for_speech(sentence_to_speak)
-                                if clean_speech:
-                                    tts_queue.put(clean_speech)
-                            # Keep whatever token fragment came after the punctuation for the next sentence
-                            sentence_buffer = parts[1]
-                            break
-
-        # Finished generating.
-
-        # Check if the LLM outputted a manual JSON tool call block in its standard content
-        if not tool_name and "{" in ai_text and "}" in ai_text:
-            start = ai_text.find('{')
-            end = ai_text.rfind('}')
-            if start != -1 and end != -1 and end > start:
-                json_str = ai_text[start:end+1]
-                try:
-                    import json
-                    tool_data = json.loads(json_str)
-
-                    # Ensure it is actually a tool call and not just a random JSON statement
-
-                    # LLM might output flat: {"name": "tool", "arguments": {...}}
-                    # Or nested: {"type": "function", "function": {"name": "tool", "arguments": {...}}}
-
-                    target_block = tool_data
-                    if "function" in tool_data and isinstance(tool_data["function"], dict):
-                        target_block = tool_data["function"]
-
-                    if "name" in target_block:
-                        tool_name = target_block.get("name")
-
-                        # Grab arguments or parameters depending on how the LLM formatted it
-                        args = target_block.get("arguments") or target_block.get("parameters", {})
-                        if isinstance(args, dict):
-                            tool_args_str = json.dumps(args)
-                        else:
-                            tool_args_str = str(args)
-
-                        print_and_log(f"[SYSTEM] Intercepted manual JSON block for tool: {tool_name}")
-
-                        # Wipe out whatever introductory conversational text it generated so the UI is clean
-                        try: eel.clearLastAIMessage()
-                        except: pass
-                except Exception as e:
-                    # Not a valid JSON tool block, ignore
-                    pass
-
+        # 2. Stage 1 Execution: The Tool Pathway
         if tool_name:
-            print_and_log(f"[SYSTEM] LLM called tool '{tool_name}' with args: {tool_args_str}")
-            safe_add_activity_log('tool', f"LLM executing tool: {tool_name}<br><span style='font-size: 10px; color: #888;'>Args: {tool_args_str}</span>")
+            print_and_log(f"[SYSTEM] Intent Router matched tool: {tool_name}")
+            safe_add_activity_log('system', f"Intent Router detected need for tool: {tool_name}")
 
             # Check Streamer Mode locks
             is_tool_safe = stream_safe_tools.get(tool_name, False)
@@ -615,24 +541,101 @@ def _process_llm_response_inner():
                 print_and_log(f"[SYSTEM] BLOCKED tool {tool_name} due to Streamer Mode.")
                 safe_add_activity_log('system', f"Tool {tool_name} BLOCKED by Streamer Mode.")
             else:
-                # Here we EXECUTE the tool and send the result BACK to the LLM to summarize
+                import os
+                import json
+                import random
                 import subprocess
+
+                # Load a processing message to speak while the tool runs
+                config_path = os.path.join("tools", tool_name, "config.json")
+                if os.path.exists(config_path):
+                    try:
+                        with open(config_path, "r", encoding="utf-8") as f:
+                            config = json.load(f)
+                            messages = config.get("processing_messages", [])
+                            if messages:
+                                holding_msg = random.choice(messages)
+                                print_and_log(f"NOVA (Holding): {holding_msg}")
+                                # Push to UI and TTS immediately
+                                try: eel.pushAIMessage(f"*{holding_msg}*")
+                                except: pass
+                                clean_speech = clean_text_for_speech(holding_msg)
+                                if clean_speech:
+                                    tts_queue.put(clean_speech)
+                    except Exception as e:
+                        pass
+
+                # Execute the tool
+                # We need to perform a fast, single-tool LLM pass to extract the arguments.
                 script_path = os.path.join("tools", tool_name, "main.py")
-                if os.path.exists(script_path):
+                schema_path = os.path.join("tools", tool_name, "schema.json")
+                tool_output = ""
+
+                if os.path.exists(script_path) and os.path.exists(schema_path):
                     python_exe = sys.executable.replace("pythonw.exe", "python.exe")
 
-                    # Pass the JSON arguments to the script if the LLM provided them
-                    cmd = [python_exe, script_path]
-                    if tool_args_str:
-                        cmd.append(tool_args_str)
+                    try:
+                        with open(schema_path, "r", encoding="utf-8") as f:
+                            tool_schema = json.load(f)
+                    except Exception as e:
+                        tool_schema = None
+                        log_error(f"Failed to load schema for {tool_name}: {e}")
 
-                    result = subprocess.run(cmd, capture_output=True, text=True)
-                    tool_output = result.stdout.strip()
-                    if result.stderr.strip():
-                        tool_output += f"\nError Output: {result.stderr.strip()}"
+                    if tool_schema:
+                        # Fast LLM pass to extract parameters
+                        extract_history = list(conversation_history)
+                        extract_history.append({
+                            "role": "system",
+                            "content": f"You must use the '{tool_name}' tool. Output ONLY the raw JSON arguments needed for the tool based on the user's request. DO NOT output any other text."
+                        })
 
-                    # Output the data visually to the user so they know what NOVA is reading
-                    # If it's too long, truncate it
+                        kwargs_extract = {
+                            "model": ACTIVE_MODEL_ID,
+                            "messages": extract_history,
+                            "temperature": 0.1, # Low temp for strict JSON
+                            "tools": [tool_schema],
+                            "tool_choice": "auto"
+                        }
+
+                        response_extract = client.chat.completions.create(**kwargs_extract)
+                        msg = response_extract.choices[0].message
+
+                        tool_args_str = "{}"
+
+                        if msg.tool_calls:
+                            tc = msg.tool_calls[0]
+                            if tc.function and tc.function.arguments:
+                                tool_args_str = tc.function.arguments
+                        elif msg.content:
+                            # Fallback if it output JSON in content
+                            ai_text = msg.content
+                            start = ai_text.find('{')
+                            end = ai_text.rfind('}')
+                            if start != -1 and end != -1 and end > start:
+                                json_str = ai_text[start:end+1]
+                                try:
+                                    tool_data = json.loads(json_str)
+                                    target_block = tool_data
+                                    if "function" in tool_data and isinstance(tool_data["function"], dict):
+                                        target_block = tool_data["function"]
+                                    args = target_block.get("arguments") or target_block.get("parameters", target_block)
+                                    if isinstance(args, dict):
+                                        tool_args_str = json.dumps(args)
+                                    else:
+                                        tool_args_str = str(args)
+                                except:
+                                    pass
+
+                        print_and_log(f"[SYSTEM] Extracted args for {tool_name}: {tool_args_str}")
+
+                        cmd = [python_exe, script_path, tool_args_str]
+                        result = subprocess.run(cmd, capture_output=True, text=True)
+                        tool_output = result.stdout.strip()
+                        if result.stderr.strip():
+                            tool_output += f"\nError Output: {result.stderr.strip()}"
+                    else:
+                         tool_output = f"Error: Could not load schema for {tool_name}."
+
                     vis_output = tool_output
                     if len(vis_output) > 500:
                         vis_output = vis_output[:500] + "... (truncated)"
@@ -641,124 +644,95 @@ def _process_llm_response_inner():
                     tool_output = f"Error: Tool {tool_name} not found."
                     safe_add_activity_log('system', f"Error: Tool {tool_name} not found.")
 
-            print_and_log(f"[SYSTEM] Tool result: {tool_output}")
+            # Stage 3: Spoon-feed the result to the LLM
+            # We replace the user's last message with the spoon-fed prompt.
+            spoon_fed_prompt = f"The user asked: {last_user_text}\n\nHere is the system data:\n{tool_output}\n\nReply to the user using ONLY this data. Do not narrate your process. Give a direct conversational answer."
 
-            # We must append the tool call to history, then append the tool response to history,
-            # and then call the LLM AGAIN to generate the final text based on the tool data.
-            # This is standard OpenAI tool calling flow.
+            # Temporarily replace the last history item
+            exec_history = list(conversation_history)
+            exec_history[-1] = {"role": "user", "content": spoon_fed_prompt}
 
-            # When forcing a manual JSON tool call via the Assistant text output, appending a "role": "tool"
-            # message back to the OpenAI API without a corresponding native "tool_calls" object in the
-            # previous Assistant message will cause a 400 Bad Request crash.
-            # Instead, we mock the tool execution sequence entirely in the system prompt context.
-
-            conversation_history.append({
-                "role": "assistant",
-                "content": ai_text # Add what it said so far (the manual json)
-            })
-
-            # Recurse: Call the LLM again with the new history to get the final answer!
-            # We append a temporary system message with the tool result.
-            recurse_history = list(conversation_history)
-            recurse_history.append({
-                "role": "system",
-                "content": f"TOOL_EXECUTION_RESULT for '{tool_name}':\n{tool_output}\n\nYou have received the tool output. Now format the final response as plain spoken text to the user. DO NOT output JSON. DO NOT invoke any more tools."
-            })
-
-            # Recurse: Call the LLM again with the new history to get the final answer!
-            # We append a temporary system message to aggressively discourage it from outputting JSON
-            # to avoid crashing LM Studio's grammar parser.
-            recurse_history = list(conversation_history)
-            recurse_history.append({
-                "role": "system",
-                "content": "You have received the tool output. Now format the final response as plain spoken text to the user. DO NOT output JSON. DO NOT invoke any more tools."
-            })
-
-            kwargs2 = {
+            kwargs = {
                 "model": ACTIVE_MODEL_ID,
-                "messages": recurse_history,
+                "messages": exec_history,
                 "temperature": 0.7,
                 "stream": True
             }
-            # ALWAYS pass tools if they exist to keep the prompt prefix identical for KV Caching.
-            if tools_array:
-                kwargs2["tools"] = tools_array
-                kwargs2["tool_choice"] = "auto" # "none" crashes LM Studio if the model writes JSON.
+            # We DO NOT pass tools_array or tool_choice. The LLM has no tools, it just speaks.
 
-            response2 = client.chat.completions.create(**kwargs2)
+            response = client.chat.completions.create(**kwargs)
 
-            for chunk in response2:
-                delta = chunk.choices[0].delta
-                if delta.content is not None:
-                    token = delta.content
-                    if len(ai_text) == 0 and token.startswith('"'):
-                        token = token[1:]
-                    ai_text += token
-                    sentence_buffer += token
-                    token_queue.put(token)
+        else:
+            # Stage 2: Normal LLM Chat (No Tool Needed)
+            kwargs = {
+                "model": ACTIVE_MODEL_ID,
+                "messages": conversation_history,
+                "temperature": 0.7,
+                "stream": True
+            }
+            # We DO NOT pass tools. This forces it to just talk and bypasses the 2.5 min tool validation wait.
+            response = client.chat.completions.create(**kwargs)
 
-                    for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
-                        if punc in sentence_buffer:
-                            parts = sentence_buffer.split(punc, 1)
-                            sentence_to_speak = parts[0] + punc.strip()
-                            if sentence_to_speak.strip():
-                                clean_speech = clean_text_for_speech(sentence_to_speak)
-                                if clean_speech:
-                                    tts_queue.put(clean_speech)
-                            sentence_buffer = parts[1]
-                            break
+        # Stream the response
+        ai_text = ""
+        sentence_buffer = ""
 
-        # Final append
-        # Flush any remaining text in the buffer to the TTS engine
+        # Iterate over the streamed chunks
+        for chunk in response:
+            delta = chunk.choices[0].delta
+
+            if delta.content is not None:
+                token = delta.content
+                if len(ai_text) == 0 and token.startswith('"'):
+                    token = token[1:]
+
+                ai_text += token
+                sentence_buffer += token
+                token_queue.put(token)
+
+                for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
+                    if punc in sentence_buffer:
+                        parts = sentence_buffer.split(punc, 1)
+                        sentence_to_speak = parts[0] + punc.strip()
+                        if sentence_to_speak.strip():
+                            clean_speech = clean_text_for_speech(sentence_to_speak)
+                            if clean_speech:
+                                tts_queue.put(clean_speech)
+                        sentence_buffer = parts[1]
+                        break
+
+        # Flush any remaining text in the buffer to the TTS queue
         if sentence_buffer.strip():
             clean_speech = clean_text_for_speech(sentence_buffer)
             if clean_speech:
                 tts_queue.put(clean_speech)
 
-        # Strip trailing quotes if the LLM outputted them at the end
-        if ai_text.endswith('"'):
-            ai_text = ai_text[:-1]
-        conversation_history.append({"role": "assistant", "content": ai_text})
-        save_chat_history()
+        # Finished generating.
         print_and_log(f"NOVA: {ai_text}")
 
-        # Notify frontend JS that the stream is completely done
+        # Update persistent history
+        conversation_history.append({
+            "role": "assistant",
+            "content": ai_text
+        })
+        save_chat_history()
         token_queue.put('[DONE]')
 
-        # Revert OBS to idle when done talking
-        try: eel.setNovaState('idle')
-        except: pass
-
-        # Return a success flag since the text was already streamed
-        return "STREAM_COMPLETE"
+        try:
+            eel.setNovaState('idle')
+        except Exception as e:
+            log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     except Exception as e:
-        error_msg = f"Error: Unable to reach the Bionic Engine. Please check that LM Studio is running and responding."
-        log_error(f"{error_msg} Details: {e}")
-
-        # We need to push the error visually to the UI chat window
-        # because this background thread no longer returns data directly to the user's JS promise
-        try: eel.pushAIMessage(error_msg)
+        log_error(f"Error during response generation: {e}")
+        try: eel.pushAIMessage(f"System Error: I encountered a critical failure. Check nova.log for details.")
         except: pass
-
         token_queue.put('[DONE]')
-
-        # Set OBS to error state
         try: eel.setNovaState('error')
         except: pass
 
-        return "ERROR_COMPLETE"
-
-# --- Text-To-Speech (TTS) Engine ---
-tts_queue = queue.Queue()
-tts_active = False
-
-# Since UI queries happen asynchronously on main thread but engine is in worker thread,
-# we cache voices here so the UI can quickly pull them without blocking.
-cached_voices = []
-
-@eel.expose
 def get_tts_voices():
+
     """Returns a list of installed system TTS voices for the UI dropdown."""
     return cached_voices
 
@@ -1008,6 +982,12 @@ def open_file_dialog(initial_dir=""):
 @eel.expose
 def get_tool_config(tool_name):
     """Returns the config file for a given tool as a dictionary (or None if none exists)."""
+    # Prevent path traversal attacks
+    import re
+    if not re.match(r'^[\w\-]+$', tool_name):
+        log_error(f"Invalid tool_name provided to get_tool_config: {tool_name}")
+        return None
+
     config_path = os.path.join("tools", tool_name, "config.json")
     if os.path.exists(config_path):
         try:
@@ -1020,6 +1000,12 @@ def get_tool_config(tool_name):
 @eel.expose
 def save_tool_config(tool_name, new_config):
     """Saves a JSON dictionary back to the tool's config.json file."""
+    # Prevent path traversal attacks
+    import re
+    if not re.match(r'^[\w\-]+$', tool_name):
+        log_error(f"Invalid tool_name provided to save_tool_config: {tool_name}")
+        return False
+
     config_path = os.path.join("tools", tool_name, "config.json")
     try:
         with open(config_path, "w", encoding='utf-8') as f:
