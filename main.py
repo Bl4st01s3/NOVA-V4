@@ -47,7 +47,7 @@ from tkinter import filedialog
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 import psutil
-import pyttsx3
+
 
 # Setup centralized logging to file
 log_file = open('nova.log', 'a', buffering=1)
@@ -732,10 +732,17 @@ def _process_llm_response_inner():
         try: eel.setNovaState('error')
         except: pass
 
+@eel.expose
 def get_tts_voices():
-
-    """Returns a list of installed system TTS voices for the UI dropdown."""
-    return cached_voices
+    """Returns a list of premium Edge TTS neural voices."""
+    return [
+        {"id": "en-GB-RyanNeural", "name": "Ryan (UK Male)"},
+        {"id": "en-GB-SoniaNeural", "name": "Sonia (UK Female)"},
+        {"id": "en-US-AriaNeural", "name": "Aria (US Female)"},
+        {"id": "en-US-GuyNeural", "name": "Guy (US Male)"},
+        {"id": "en-AU-NatashaNeural", "name": "Natasha (AU Female)"},
+        {"id": "en-AU-WilliamNeural", "name": "William (AU Male)"}
+    ]
 
 current_tts_effect = "futuristic"
 
@@ -834,45 +841,24 @@ def apply_dsp_effects(audio_data, sample_rate, effect_type):
     return (final_audio * 32767).astype(np.int16)
 
 def tts_worker():
-    """Background thread to process TTS speech sequentially without blocking."""
-    global tts_active, cached_voices
-
-    # Windows COM Initialization MUST happen in the specific thread that uses pyttsx3/SAPI5.
-    # Otherwise, .runAndWait() will freeze on the second call.
-    try:
-        import pythoncom
-        pythoncom.CoInitialize()
-    except ImportError:
-        pass # Not on Windows or pythoncom not installed
-
-    # Fetch voices once initially to populate the UI cache
-    try:
-        temp_engine = pyttsx3.init()
-        voices = temp_engine.getProperty('voices')
-        for voice in voices:
-            cached_voices.append({
-                "id": voice.id,
-                "name": voice.name
-            })
-        del temp_engine
-    except Exception as e:
-        log_error(f"Failed to fetch TTS voices inside worker: {e}")
+    """
+    Background worker that listens for text in the queue and speaks it using edge-tts.
+    """
+    global tts_active
+    import os
+    import time
+    import subprocess
+    import asyncio
 
     # Ensure temporary folder exists
     temp_dir = "temp_audio"
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
 
-    # Initialize a single persistent engine for the worker thread
-    tts_engine = None
-    try:
-        tts_engine = pyttsx3.init()
-    except Exception as e:
-        log_error(f"Failed to initialize TTS engine: {e}")
-
-    current_worker_voice = None
-    current_worker_rate = 200 # default
-    current_worker_volume = 1.0 # default
+    current_worker_voice = "en-GB-RyanNeural"
+    # edge-tts uses percentages like +0% or +20%
+    current_worker_rate = 0
+    current_worker_volume = 100
     current_worker_sentence_gap = 0.2 # default
 
     while True:
@@ -886,68 +872,84 @@ def tts_worker():
                 current_worker_voice = task["voice_id"]
                 print_and_log(f"Worker cached TTS Voice preference: {current_worker_voice}")
             elif task.get("type") == "set_params":
+                # Pyttsx3 rate was ~200 WPM default. Edge-TTS is % based.
+                # Let's map 200 to +0%, 300 to +50%, 100 to -50%
                 if "rate" in task:
-                    current_worker_rate = int(task["rate"])
+                    raw_rate = int(task["rate"])
+                    rate_pct = int(((raw_rate - 200) / 200) * 100)
+                    current_worker_rate = rate_pct
+
+                # Volume from 0.0 - 1.0 mapped to %
                 if "volume" in task:
-                    current_worker_volume = float(task["volume"])
+                    raw_vol = float(task["volume"])
+                    vol_pct = int(raw_vol * 100)
+                    current_worker_volume = vol_pct
+
                 if "gap" in task:
                     current_worker_sentence_gap = float(task["gap"])
-                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}, Volume={current_worker_volume}, Gap={current_worker_sentence_gap}")
+                print_and_log(f"Worker cached TTS Params: Rate={current_worker_rate}%, Volume={current_worker_volume}%, Gap={current_worker_sentence_gap}")
             continue
 
         # Otherwise it's text to speak
         text = task
         tts_active = True
-        temp_file = os.path.join(temp_dir, "speech.wav")
-        print_and_log(f"[TTS WORKER] Picked up text from queue: {text}")
+
+        # edge-tts outputs MP3. We need it as WAV for numpy DSP.
+        # Since sounddevice can't natively play mp3 easily, we will output to mp3 and convert to wav using ffmpeg if needed,
+        # OR edge-tts has a python API we can use directly.
+        # Actually edge-tts CLI doesn't easily output WAV. We will just use the python API which gives us raw bytes.
+
+        import edge_tts
+
+        rate_str = f"+{current_worker_rate}%" if current_worker_rate >= 0 else f"{current_worker_rate}%"
+        # Edge volume is relative to normal (e.g. +0% is normal, -50% is half, +50% is loud)
+        # If user volume is 100 (1.0), that's +0%. If 50 (0.5), that's -50%.
+        vol_relative = current_worker_volume - 100
+        vol_str = f"+{vol_relative}%" if vol_relative >= 0 else f"{vol_relative}%"
+
+        temp_mp3 = os.path.join(temp_dir, "speech.mp3")
+        temp_wav = os.path.join(temp_dir, "speech.wav")
+        print_and_log(f"[TTS WORKER] Generating audio via edge-tts: {text}")
 
         try:
-            if not tts_engine:
-                log_error("[TTS WORKER] Engine not initialized.")
-                continue
+            # We must run asyncio synchronously here
+            async def generate_audio():
+                communicate = edge_tts.Communicate(text, current_worker_voice, rate=rate_str, volume=vol_str)
+                await communicate.save(temp_mp3)
 
-            if current_worker_voice:
-                tts_engine.setProperty('voice', current_worker_voice)
-            tts_engine.setProperty('rate', current_worker_rate)
-            tts_engine.setProperty('volume', current_worker_volume)
+            asyncio.run(generate_audio())
 
-            # Intercept TTS output to file
-            print_and_log(f"[TTS WORKER] Saving raw TTS to: {temp_file}")
-            tts_engine.save_to_file(text, temp_file)
-            tts_engine.runAndWait()
+            if os.path.exists(temp_mp3):
+                import pygame
 
-            # Load the audio file via scipy
-            if os.path.exists(temp_file):
-                print_and_log(f"[TTS WORKER] Reading generated .wav file. Size: {os.path.getsize(temp_file)} bytes")
-                sample_rate, audio_data = wav.read(temp_file)
-                print_and_log(f"[TTS WORKER] Applying DSP effect: '{current_tts_effect}'. Original Shape: {audio_data.shape}")
+                # Edge TTS natively generates MP3s. On Windows, Pygame plays them perfectly without needing FFmpeg.
+                try:
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(temp_mp3)
+                    pygame.mixer.music.play()
 
-                # Apply active DSP effect
-                processed_audio = apply_dsp_effects(audio_data, sample_rate, current_tts_effect)
-                print_and_log(f"[TTS WORKER] DSP complete. Playing via sounddevice...")
+                    while pygame.mixer.music.get_busy():
+                        time.sleep(0.1)
 
-                # Play via sounddevice instead of pyttsx3 directly
-                sd.play(processed_audio, sample_rate)
-                sd.wait() # Block until playing is finished
-                print_and_log(f"[TTS WORKER] Playback finished for this sentence.")
-
-                # Apply custom user sentence gap
-                time.sleep(current_worker_sentence_gap)
+                    pygame.mixer.quit()
+                    print_and_log(f"[TTS WORKER] Playback finished for this sentence.")
+                    time.sleep(current_worker_sentence_gap)
+                except Exception as play_err:
+                    log_error(f"[TTS WORKER] Failed to play audio using Pygame: {play_err}")
             else:
-                log_error(f"[TTS WORKER] Temporary wav file {temp_file} was not created!")
+                log_error(f"[TTS WORKER] Edge-TTS failed to create MP3 file.")
 
         except Exception as e:
             import traceback
             error_trace = traceback.format_exc()
             log_error(f"[TTS WORKER] CRITICAL ERROR: {error_trace}")
         finally:
-            # Cleanup temp file
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                    print_and_log(f"[TTS WORKER] Cleaned up temporary wav file.")
-                except Exception as cleanup_error:
-                    log_error(f"[TTS WORKER] Failed to cleanup wav file: {cleanup_error}")
+            if os.path.exists(temp_mp3):
+                try: os.remove(temp_mp3)
+                except: pass
+            if os.path.exists(temp_wav):
+                try: os.remove(temp_wav)
+                except: pass
 
         tts_active = False
 
