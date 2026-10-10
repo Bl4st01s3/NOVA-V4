@@ -595,6 +595,64 @@ def _process_llm_response_inner():
                 tool_output = ""
                 tool_execution_time = 0.0
 
+                # ---------------------------------------------------------
+                # 1. SMART HOLDING LOGIC (PRE-EXECUTION PREDICTION)
+                # ---------------------------------------------------------
+                # We check past rolling average execution times for this tool.
+                # If it normally takes > 0.5s, we trigger the holding message immediately *before* execution.
+                # If we don't have data, we assume it's slow (defaulting to True) so the user gets feedback.
+
+                # We also check the user's explicit preference if they manually disabled holding messages for this tool.
+                processing_prefs = {}
+                if os.path.exists("processing_msg_prefs.json"):
+                    try:
+                        with open("processing_msg_prefs.json", "r", encoding="utf-8") as f:
+                            processing_prefs = json.load(f)
+                    except:
+                        pass
+
+                allow_processing_msg = processing_prefs.get(tool_name, True)
+
+                stats_file = "execution_stats.json"
+                exec_stats = {}
+                if os.path.exists(stats_file):
+                    try:
+                        with open(stats_file, "r", encoding="utf-8") as f:
+                            exec_stats = json.load(f)
+                    except:
+                        pass
+
+                avg_time = 1.0 # Default assume slow until proven fast
+                history_times = exec_stats.get(tool_name, [])
+                if history_times:
+                    avg_time = sum(history_times) / len(history_times)
+
+                did_play_holding_msg = False
+
+                if allow_processing_msg and avg_time > 0.5:
+                    if os.path.exists(config_path):
+                        try:
+                            with open(config_path, "r", encoding="utf-8") as f:
+                                config = json.load(f)
+                                messages = config.get("processing_messages", [])
+                                if messages:
+                                    holding_msg = random.choice(messages)
+                                    print_and_log(f"NOVA (Holding): {holding_msg}")
+                                    try: eel.pushAIMessage(f"{holding_msg}")
+                                    except: pass
+                                    clean_speech = clean_text_for_speech(holding_msg)
+                                    if clean_speech:
+                                        tts_queue.put(clean_speech)
+                                        # Let the UI breathe so the message renders
+                                        time.sleep(0.1)
+                                    did_play_holding_msg = True
+                        except Exception:
+                            pass
+
+                # ---------------------------------------------------------
+                # 2. TOOL EXECUTION
+                # ---------------------------------------------------------
+
                 if os.path.exists(script_path) and os.path.exists(schema_path):
                     python_exe = sys.executable.replace("pythonw.exe", "python.exe")
 
@@ -676,31 +734,34 @@ def _process_llm_response_inner():
                     if len(vis_output) > 500:
                         vis_output = vis_output[:500] + "... (truncated)"
                     safe_add_activity_log('tool', f"Tool Result ({tool_execution_time:.2f}s):<br><span style='font-size: 10px; color: #0f0;'>{vis_output}</span>")
+
+                    # ---------------------------------------------------------
+                    # 3. STATS UPDATE & SMART FAST-FAIL PADDING
+                    # ---------------------------------------------------------
+                    # Only update the moving average if the tool did NOT throw an error.
+                    # This prevents instant "config missing" fast-fails from artificially lowering
+                    # the execution time average and breaking the holding message prediction.
+                    if "error" not in tool_output.lower():
+                        history_times.append(tool_execution_time)
+                        if len(history_times) > 5:
+                            history_times.pop(0) # Keep last 5 runs
+                        exec_stats[tool_name] = history_times
+
+                        try:
+                            with open(stats_file, "w", encoding="utf-8") as f:
+                                json.dump(exec_stats, f)
+                        except: pass
+
+                    # If we predicted a slow run and played the holding message, but the tool failed incredibly fast,
+                    # we must synthetically pad the time. Otherwise, the LLM will instantly stream the error response
+                    # before the UI and TTS have finished rendering/speaking the holding message!
+                    if did_play_holding_msg and tool_execution_time < 1.5:
+                        padding_needed = 1.5 - tool_execution_time
+                        time.sleep(padding_needed)
+
                 else:
                     tool_output = f"Error: Tool {tool_name} not found."
                     safe_add_activity_log('system', f"Error: Tool {tool_name} not found.")
-
-                # If the tool took more than 0.5 seconds to execute (e.g. connecting to cloud APIs),
-                # we play the holding message *now* before feeding the LLM so there's no dead silence,
-                # but no UI race condition either since we are forcing it to be perfectly sequential.
-                if tool_execution_time > 0.5:
-                    if os.path.exists(config_path):
-                        try:
-                            with open(config_path, "r", encoding="utf-8") as f:
-                                config = json.load(f)
-                                messages = config.get("processing_messages", [])
-                                if messages:
-                                    holding_msg = random.choice(messages)
-                                    print_and_log(f"NOVA (Holding): {holding_msg}")
-                                    try: eel.pushAIMessage(f"{holding_msg}")
-                                    except: pass
-                                    clean_speech = clean_text_for_speech(holding_msg)
-                                    if clean_speech:
-                                        tts_queue.put(clean_speech)
-                                        # Let the UI breathe and update so we don't start the LLM stream instantly
-                                        time.sleep(0.5)
-                        except Exception:
-                            pass
 
             # Stage 3: Spoon-feed the result to the LLM
             # We replace the user's last message with the spoon-fed prompt.
@@ -1120,6 +1181,33 @@ def set_tool_stream_safe(tool_name, is_safe):
             json.dump(stream_safe_tools, f)
     except Exception as e:
         print_and_log(f"[ERROR] Failed to save stream safe tools: {e}")
+
+@eel.expose
+def set_tool_processing_msg(tool_name, is_enabled):
+    prefs = {}
+    if os.path.exists("processing_msg_prefs.json"):
+        try:
+            with open("processing_msg_prefs.json", "r", encoding="utf-8") as f:
+                prefs = json.load(f)
+        except: pass
+
+    prefs[tool_name] = is_enabled
+    print_and_log(f"[SYSTEM] Processing Message for {tool_name} set to {is_enabled}")
+
+    try:
+        with open("processing_msg_prefs.json", "w", encoding="utf-8") as f:
+            json.dump(prefs, f)
+    except Exception as e:
+        print_and_log(f"[ERROR] Failed to save processing msg prefs: {e}")
+
+@eel.expose
+def get_processing_msg_prefs():
+    if os.path.exists("processing_msg_prefs.json"):
+        try:
+            with open("processing_msg_prefs.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: pass
+    return {}
 
 @eel.expose
 def open_file_dialog(initial_dir=""):

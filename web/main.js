@@ -352,6 +352,7 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             const availableTools = await eel.get_available_tools()();
             const safeToolsMap = await eel.get_stream_safe_tools()() || {};
+            const processingMsgPrefs = await eel.get_processing_msg_prefs()() || {};
 
             if (availableTools.length === 0) {
                 briefingContainer.innerHTML = '<p class="placeholder-text" style="font-size:12px;">No tools found in /tools directory.</p>';
@@ -465,6 +466,35 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     safeCheckbox.addEventListener('change', () => {
                         try { eel.set_tool_stream_safe(toolName, safeCheckbox.checked)(); } catch(e) {}
+                    });
+
+                    // Processing Message Toggle
+                    const procLabel = document.createElement('label');
+                    procLabel.className = "cyber-checkbox-container";
+                    procLabel.style.margin = "0";
+
+                    const procCheckbox = document.createElement('input');
+                    procCheckbox.type = "checkbox";
+
+                    // Default to true if not set
+                    const isProcEnabled = processingMsgPrefs[toolName] !== undefined ? processingMsgPrefs[toolName] : true;
+                    procCheckbox.checked = isProcEnabled;
+
+                    const procHexSpan = document.createElement('span');
+                    procHexSpan.className = "checkmark-hex";
+
+                    const procTextSpan = document.createElement('span');
+                    procTextSpan.innerText = "Holding Msgs";
+                    procTextSpan.style.color = "var(--cyan)";
+                    procTextSpan.style.fontSize = "12px";
+
+                    procLabel.appendChild(procCheckbox);
+                    procLabel.appendChild(procHexSpan);
+                    procLabel.appendChild(procTextSpan);
+                    rightCol.appendChild(procLabel);
+
+                    procCheckbox.addEventListener('change', () => {
+                        try { eel.set_tool_processing_msg(toolName, procCheckbox.checked)(); } catch(e) {}
                     });
 
                     // Buttons Container
