@@ -22,6 +22,7 @@ The Hub serves a highly interactive Web UI which acts as the mission control for
 NOVA is transitioning to a hands-free, voice-activated interface. To prevent background noise (like TVs or 3D printers) from triggering commands, the system relies on Biometric Voice Profiles rather than simple wake words.
 *   **Enrollment Wizard**: Users read specific pangrams into the UI.
 *   **Acoustic Embeddings**: The raw `.wav` audio is stripped of hardware hiss via Spectral Subtraction, filtered with an 80Hz High-Pass, and permanently saved. Future updates will process these clean samples into mathematical acoustic embeddings for real-time Speaker Verification.
+*   **Context-Aware STT Auto-Correction**: Because STT engines often mishear technical terminology or specific nouns (e.g. interpreting "Nylon stand offs" as "nylon stand ofs"), future updates will route the raw transcribed STT string through a fast, context-aware auto-correction filter before feeding it to the main Intent Router to ensure flawless tool execution.
 
 ## Plugins & Capabilities
 
