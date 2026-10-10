@@ -467,6 +467,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         try { eel.set_tool_stream_safe(toolName, safeCheckbox.checked)(); } catch(e) {}
                     });
 
+                    // Buttons Container
+                    const btnsContainer = document.createElement('div');
+                    btnsContainer.style.display = "flex";
+                    btnsContainer.style.gap = "5px";
+
                     // Config Button Logic
                     const configBtn = document.createElement('button');
                     configBtn.className = "cyber-btn";
@@ -1497,6 +1502,107 @@ document.getElementById('save-config-btn').addEventListener('click', async () =>
         alert("Failed to save configuration.");
     }
 });
+
+// --- Dynamic Keywords Editor Logic ---
+let currentKeywordsTool = null;
+let currentKeywordsData = null; // Full config object reference
+
+function renderKeywordsList() {
+    const container = document.getElementById('keywords-list-container');
+    container.innerHTML = '';
+
+    if (!currentKeywordsData || !currentKeywordsData.router_keywords) return;
+
+    currentKeywordsData.router_keywords.forEach((kw, index) => {
+        const row = document.createElement('div');
+        row.style.display = "flex";
+        row.style.justifyContent = "space-between";
+        row.style.alignItems = "center";
+        row.style.background = "rgba(188, 19, 254, 0.05)";
+        row.style.padding = "10px";
+        row.style.border = "1px solid rgba(188, 19, 254, 0.2)";
+        row.style.borderRadius = "5px";
+
+        const textSpan = document.createElement('span');
+        textSpan.innerText = kw;
+        textSpan.style.color = "var(--text-main)";
+
+        const delBtn = document.createElement('button');
+        delBtn.innerText = "X";
+        delBtn.style.background = "#ff0000";
+        delBtn.style.color = "#fff";
+        delBtn.style.border = "none";
+        delBtn.style.cursor = "pointer";
+        delBtn.style.padding = "2px 8px";
+        delBtn.onclick = () => {
+            currentKeywordsData.router_keywords.splice(index, 1);
+            renderKeywordsList(); // Re-render
+        };
+
+        row.appendChild(textSpan);
+        row.appendChild(delBtn);
+        container.appendChild(row);
+    });
+}
+
+function openKeywordsModal(toolName, configData) {
+    currentKeywordsTool = toolName;
+    // We deep clone so we don't accidentally mutate the main global state until save
+    currentKeywordsData = JSON.parse(JSON.stringify(configData));
+
+    document.getElementById('tool-keywords-title').innerText = `Edit Keywords: ${toolName.toUpperCase()}`;
+    document.getElementById('new-keyword-input').value = '';
+
+    renderKeywordsList();
+    document.getElementById('tool-keywords-modal').style.display = 'flex';
+}
+window.openKeywordsModal = openKeywordsModal;
+
+function addNewKeyword() {
+    const inputField = document.getElementById('new-keyword-input');
+    const newKw = inputField.value.trim().toLowerCase();
+
+    if (newKw && currentKeywordsData) {
+        if (!currentKeywordsData.router_keywords.includes(newKw)) {
+            currentKeywordsData.router_keywords.push(newKw);
+            renderKeywordsList();
+        }
+        inputField.value = '';
+    }
+}
+
+document.getElementById('add-keyword-btn').addEventListener('click', addNewKeyword);
+document.getElementById('new-keyword-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') addNewKeyword();
+});
+
+document.getElementById('save-keywords-btn').addEventListener('click', async () => {
+    if (!currentKeywordsTool || !currentKeywordsData) return;
+
+    // Send the entirely updated config object back to the backend
+    const success = await eel.save_tool_config(currentKeywordsTool, currentKeywordsData)();
+
+    if (success) {
+        document.getElementById('tool-keywords-modal').style.display = 'none';
+
+        // Let's also update the global currentConfigData if the main config window is accidentally open underneath
+        if (currentConfigTool === currentKeywordsTool) {
+            currentConfigData.router_keywords = currentKeywordsData.router_keywords;
+        }
+
+        const btn = document.getElementById('save-keywords-btn');
+        const originalText = btn.innerText;
+        btn.innerText = "SAVED!";
+        btn.style.color = "#0f0";
+        setTimeout(() => {
+            btn.innerText = originalText;
+            btn.style.color = "var(--purple)";
+        }, 2000);
+    } else {
+        alert("Failed to save keywords.");
+    }
+});
+
 
 });
 
