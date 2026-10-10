@@ -856,17 +856,18 @@ def apply_dsp_effects(audio_data, sample_rate):
             tail_length = delay_samples * 3 # Allow a few bounces
             extended_audio = np.pad(audio_float, (0, tail_length), mode='constant')
 
-            # Simple feedback delay line (only doing a few fixed iterations for performance)
-            current_delay = np.zeros_like(extended_audio)
-            current_delay[:len(audio_float)] = audio_float
-
             wet_signal = np.zeros_like(extended_audio)
 
+            # Simple feedback delay line (only doing a few fixed iterations for performance)
             for i in range(3): # 3 bounces
                 bounce = np.zeros_like(extended_audio)
                 offset = delay_samples * (i + 1)
-                if offset < len(extended_audio):
-                    bounce[offset:] = audio_float[:len(extended_audio)-offset] * (delay_feedback ** (i+1))
+
+                # We need to slice the original audio_float so it fits exactly in the remaining space of bounce
+                remaining_space = len(extended_audio) - offset
+                if remaining_space > 0:
+                    copy_length = min(len(audio_float), remaining_space)
+                    bounce[offset:offset+copy_length] = audio_float[:copy_length] * (delay_feedback ** (i+1))
                     wet_signal += bounce
 
             audio_float = (extended_audio * (1.0 - delay_mix)) + (wet_signal * delay_mix)
@@ -996,6 +997,11 @@ def tts_worker():
                 # Apply Volume scaling
                 processed_float = processed_audio.astype(np.float32) * current_worker_volume
                 processed_audio = np.clip(processed_float, -32768, 32767).astype(np.int16)
+
+                # Append 150ms of pure silence to the end to prevent playback hardware from
+                # clamping the audio stream closed before the final phoneme finishes playing
+                silence_padding = np.zeros(int(sample_rate * 0.15), dtype=np.int16)
+                processed_audio = np.concatenate((processed_audio, silence_padding))
 
                 # Play using sounddevice
                 sd.play(processed_audio, samplerate=sample_rate)
