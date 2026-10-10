@@ -128,6 +128,18 @@ def main():
                     result_df = result_df[result_df[k] == v]
 
         records = result_df.to_dict(orient="records")
+
+        # Deduplicate Delivery Windows for the LLM
+        for record in records:
+            start_date = record.get("Delivery Window Start")
+            end_date = record.get("Delivery Window End")
+
+            # If both dates exist and are identical, combine them into a single field
+            if start_date and end_date and str(start_date).strip() == str(end_date).strip():
+                record["Delivery Date"] = start_date
+                del record["Delivery Window Start"]
+                del record["Delivery Window End"]
+
         print(json.dumps({
             "status": "success",
             "source": "google_sheets" if used_cloud else "local_excel",
