@@ -124,13 +124,21 @@ def main():
             if k in result_df.columns:
                 if isinstance(v, bool):
                     result_df = result_df[result_df[k].astype(str).str.lower() == str(v).lower()]
+                elif isinstance(v, str):
+                    # Use fuzzy/partial matching for strings so exact titles aren't required
+                    result_df = result_df[result_df[k].astype(str).str.contains(v, case=False, na=False)]
                 else:
                     result_df = result_df[result_df[k] == v]
 
         records = result_df.to_dict(orient="records")
 
-        # Deduplicate Delivery Windows for the LLM
+        # Format the data cleanly for the LLM
         for record in records:
+            # 1. Rename 'Order Date' to clarify it's the purchase date, not the dispatch date
+            if "Order Date" in record:
+                record["Date Placed / Purchased"] = record.pop("Order Date")
+
+            # 2. Deduplicate Delivery Windows for the LLM
             start_date = record.get("Delivery Window Start")
             end_date = record.get("Delivery Window End")
 
