@@ -725,6 +725,7 @@ def _process_llm_response_inner():
         ai_text = ""
         sentence_buffer = ""
         has_started_printing = False
+        startup_buffer = ""
 
         # Iterate over the streamed chunks
         for chunk in response:
@@ -733,23 +734,20 @@ def _process_llm_response_inner():
             if delta.content is not None:
                 token = delta.content
 
-                # Clean up initial garbage tokens (isolated letters, dots, quotes, newlines)
-                # before we start officially streaming to the UI and TTS buffer.
+                # We need to robustly strip out random hallucinations at the very start of the sequence.
+                # Sometimes the LLM spits out "s \n\n" or ". r \n\n" before the actual sentence begins.
                 if not has_started_printing:
-                    clean_token = token.lstrip(' \n\r\t".,!?;:-')
-                    # If it's just a single random letter (like 'n\n' or 's\n') right at the very start of generation, ignore it.
-                    if len(clean_token.strip()) <= 1 and not clean_token.strip().isalnum():
-                         continue # still garbage
-                    if len(clean_token.strip()) == 1 and clean_token.strip().lower() in ['s', 'n', 'a']:
-                         # Sometimes it outputs a random stray 's' or 'n' before the real sentence.
-                         continue
+                    startup_buffer += token
+                    clean_start = startup_buffer.lstrip(' \n\r\t".,!?;:-')
 
-                    token = clean_token
-                    if token:
-                        has_started_printing = True
+                    # We wait until the LLM has generated a chunk of text that actually looks like the start
+                    # of a real word/sentence (e.g. at least 2 alphanumeric characters long, or a full word).
+                    if len(clean_start.strip()) < 2:
+                        continue
 
-                if not has_started_printing:
-                    continue
+                    # Now that we have a real word starting, we dump the cleaned buffer and set the flag!
+                    token = clean_start
+                    has_started_printing = True
 
                 ai_text += token
                 sentence_buffer += token
