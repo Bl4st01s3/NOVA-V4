@@ -942,18 +942,9 @@ function appendSystemMessage(text) {
 
 eel.expose(pushAIMessage);
 function pushAIMessage(text) {
-    // If there is already an active streaming div, this is likely a holding message
-    // overlapping with the main stream response. We inject it at the top.
-    if (window.activeStreamingContentDiv) {
-        let currentHTML = window.activeStreamingContentDiv.innerHTML;
-        // Check if there is already a holding message injected to avoid duplicates/mess
-        if (!currentHTML.includes('<i>')) {
-            window.activeStreamingContentDiv.innerHTML = `<i>${text.replace(/\n/g, '<br>')}</i><br><br>` + currentHTML;
-        }
-        return;
-    }
-
-    // Otherwise create a new chat bubble
+    // With the new sequential tool timing logic, holding messages play completely before
+    // the LLM streaming bubble is created. Therefore, we can safely just create a standard bubble.
+    // If the LLM responds extremely fast right after, it will just create a second bubble normally.
     const chatContainer = document.getElementById('chat-container');
     if (!chatContainer) return;
 

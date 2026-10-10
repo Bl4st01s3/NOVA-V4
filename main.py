@@ -585,34 +585,15 @@ def _process_llm_response_inner():
                 import json
                 import random
                 import subprocess
-
-                # Load a processing message to speak while the tool runs
-                config_path = os.path.join("tools", tool_name, "config.json")
-                if os.path.exists(config_path):
-                    try:
-                        with open(config_path, "r", encoding="utf-8") as f:
-                            config = json.load(f)
-                            messages = config.get("processing_messages", [])
-                            if messages:
-                                holding_msg = random.choice(messages)
-                                print_and_log(f"NOVA (Holding): {holding_msg}")
-                                # We no longer push this immediately as a new bubble because fast tool executions
-                                # cause it to race condition with the main LLM streaming response bubble.
-                                # The backend TTS handles it correctly, but visually we just want it integrated.
-                                # eel.pushAIMessage handles overlapping automatically now by checking if a stream is active.
-                                try: eel.pushAIMessage(f"{holding_msg}")
-                                except: pass
-                                clean_speech = clean_text_for_speech(holding_msg)
-                                if clean_speech:
-                                    tts_queue.put(clean_speech)
-                    except Exception as e:
-                        pass
+                import time
 
                 # Execute the tool
                 # We need to perform a fast, single-tool LLM pass to extract the arguments.
                 script_path = os.path.join("tools", tool_name, "main.py")
                 schema_path = os.path.join("tools", tool_name, "schema.json")
+                config_path = os.path.join("tools", tool_name, "config.json")
                 tool_output = ""
+                tool_execution_time = 0.0
 
                 if os.path.exists(script_path) and os.path.exists(schema_path):
                     python_exe = sys.executable.replace("pythonw.exe", "python.exe")
@@ -677,7 +658,14 @@ def _process_llm_response_inner():
                             creationflags = subprocess.CREATE_NO_WINDOW
 
                         cmd = [python_exe, script_path, tool_args_str]
+
+                        # Start execution timer
+                        start_time = time.time()
+
                         result = subprocess.run(cmd, capture_output=True, text=True, creationflags=creationflags)
+
+                        tool_execution_time = time.time() - start_time
+
                         tool_output = result.stdout.strip()
                         if result.stderr.strip():
                             tool_output += f"\nError Output: {result.stderr.strip()}"
@@ -687,10 +675,32 @@ def _process_llm_response_inner():
                     vis_output = tool_output
                     if len(vis_output) > 500:
                         vis_output = vis_output[:500] + "... (truncated)"
-                    safe_add_activity_log('tool', f"Tool Result:<br><span style='font-size: 10px; color: #0f0;'>{vis_output}</span>")
+                    safe_add_activity_log('tool', f"Tool Result ({tool_execution_time:.2f}s):<br><span style='font-size: 10px; color: #0f0;'>{vis_output}</span>")
                 else:
                     tool_output = f"Error: Tool {tool_name} not found."
                     safe_add_activity_log('system', f"Error: Tool {tool_name} not found.")
+
+                # If the tool took more than 0.5 seconds to execute (e.g. connecting to cloud APIs),
+                # we play the holding message *now* before feeding the LLM so there's no dead silence,
+                # but no UI race condition either since we are forcing it to be perfectly sequential.
+                if tool_execution_time > 0.5:
+                    if os.path.exists(config_path):
+                        try:
+                            with open(config_path, "r", encoding="utf-8") as f:
+                                config = json.load(f)
+                                messages = config.get("processing_messages", [])
+                                if messages:
+                                    holding_msg = random.choice(messages)
+                                    print_and_log(f"NOVA (Holding): {holding_msg}")
+                                    try: eel.pushAIMessage(f"{holding_msg}")
+                                    except: pass
+                                    clean_speech = clean_text_for_speech(holding_msg)
+                                    if clean_speech:
+                                        tts_queue.put(clean_speech)
+                                        # Let the UI breathe and update so we don't start the LLM stream instantly
+                                        time.sleep(0.5)
+                        except Exception:
+                            pass
 
             # Stage 3: Spoon-feed the result to the LLM
             # We replace the user's last message with the spoon-fed prompt.
