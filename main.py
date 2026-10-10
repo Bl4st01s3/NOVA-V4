@@ -157,7 +157,9 @@ def _random_date_formatter(match):
         return date_str
 
 def _spell_out_long_numbers(match):
-    return " ".join(list(match.group(0)))
+    # Strip any hyphens out before spacing so the TTS doesn't say "dash"
+    clean_str = match.group(0).replace('-', '')
+    return " ".join(list(clean_str))
 
 def clean_text_for_speech(text):
     """
@@ -168,8 +170,8 @@ def clean_text_for_speech(text):
     # Randomly format DD/MM/YYYY dates into spoken words
     text = re.sub(r'\b\d{1,2}/\d{1,2}/\d{4}\b', _random_date_formatter, text)
 
-    # Space out long alphanumeric strings (6+ chars, containing at least one digit) like tracking numbers
-    text = re.sub(r'\b[A-Z0-9]{6,}\b', lambda m: _spell_out_long_numbers(m) if any(c.isdigit() for c in m.group(0)) else m.group(0), text, flags=re.IGNORECASE)
+    # Space out long alphanumeric strings (6+ chars, optionally containing hyphens, containing at least one digit) like tracking numbers
+    text = re.sub(r'\b[A-Z0-9\-]{6,}\b', lambda m: _spell_out_long_numbers(m) if any(c.isdigit() for c in m.group(0)) else m.group(0), text, flags=re.IGNORECASE)
 
     # Apply phonetic overrides
     for word, override in phonetic_overrides.items():
@@ -669,8 +671,13 @@ def _process_llm_response_inner():
 
                         print_and_log(f"[SYSTEM] Extracted args for {tool_name}: {tool_args_str}")
 
+                        # Ensure background tools don't pop up a cmd window on Windows
+                        creationflags = 0
+                        if os.name == 'nt':
+                            creationflags = subprocess.CREATE_NO_WINDOW
+
                         cmd = [python_exe, script_path, tool_args_str]
-                        result = subprocess.run(cmd, capture_output=True, text=True)
+                        result = subprocess.run(cmd, capture_output=True, text=True, creationflags=creationflags)
                         tool_output = result.stdout.strip()
                         if result.stderr.strip():
                             tool_output += f"\nError Output: {result.stderr.strip()}"
