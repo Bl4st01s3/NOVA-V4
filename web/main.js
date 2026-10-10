@@ -1467,7 +1467,18 @@ document.getElementById('save-config-btn').addEventListener('click', async () =>
     }
 
     // Deep merge with currentConfigData to preserve fields that weren't rendered (just in case)
-    const finalConfig = Object.assign({}, currentConfigData, newConfig);
+    // Object.assign is shallow, we need a custom deep merge
+    function deepMerge(target, source) {
+        for (const key of Object.keys(source)) {
+            if (source[key] instanceof Object && !Array.isArray(source[key])) {
+                Object.assign(source[key], deepMerge(target[key] || {}, source[key]));
+            }
+        }
+        return Object.assign(target || {}, source);
+    }
+
+    // We clone currentConfigData first so we don't accidentally mutate the global state directly
+    const finalConfig = deepMerge(JSON.parse(JSON.stringify(currentConfigData)), newConfig);
 
     // Send to backend
     const success = await eel.save_tool_config(currentConfigTool, finalConfig)();

@@ -9,7 +9,6 @@
         "Service": "Google Drive",
         "File_ID_or_Path": "",
         "Credentials_File": "google_credentials.json",
-        "Access_Key": "",
         "Time_Out": 5,
         "Max_Retries": 2
     },
