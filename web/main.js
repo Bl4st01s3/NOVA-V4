@@ -937,7 +937,18 @@ function appendSystemMessage(text) {
 
 eel.expose(pushAIMessage);
 function pushAIMessage(text) {
-    // Re-use the logic from inside DOMContentLoaded
+    // If there is already an active streaming div, this is likely a holding message
+    // overlapping with the main stream response. We inject it at the top.
+    if (window.activeStreamingContentDiv) {
+        let currentHTML = window.activeStreamingContentDiv.innerHTML;
+        // Check if there is already a holding message injected to avoid duplicates/mess
+        if (!currentHTML.includes('<i>')) {
+            window.activeStreamingContentDiv.innerHTML = `<i>${text.replace(/\n/g, '<br>')}</i><br><br>` + currentHTML;
+        }
+        return;
+    }
+
+    // Otherwise create a new chat bubble
     const chatContainer = document.getElementById('chat-container');
     if (!chatContainer) return;
 
