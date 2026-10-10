@@ -557,8 +557,11 @@ def _process_llm_response_inner():
                             if messages:
                                 holding_msg = random.choice(messages)
                                 print_and_log(f"NOVA (Holding): {holding_msg}")
-                                # Push to UI and TTS immediately
-                                try: eel.pushAIMessage(f"*{holding_msg}*")
+                                # We no longer push this immediately as a new bubble because fast tool executions
+                                # cause it to race condition with the main LLM streaming response bubble.
+                                # The backend TTS handles it correctly, but visually we just want it integrated.
+                                # eel.pushAIMessage handles overlapping automatically now by checking if a stream is active.
+                                try: eel.pushAIMessage(f"{holding_msg}")
                                 except: pass
                                 clean_speech = clean_text_for_speech(holding_msg)
                                 if clean_speech:
