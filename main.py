@@ -132,11 +132,45 @@ def load_phonetic_overrides():
                     except Exception as e:
                         log_error(f"Failed to load phonetic config for {item}: {e}")
 
+def ordinal(n):
+    if 11 <= (n % 100) <= 13:
+        return str(n) + 'th'
+    return str(n) + {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')
+
+def format_date_british(d):
+    return f"{ordinal(d.day)} of {d.strftime('%B')}, {d.year}"
+
+def format_date_american(d):
+    return f"{d.strftime('%B')} {ordinal(d.day)}, {d.year}"
+
+def _random_date_formatter(match):
+    date_str = match.group(0)
+    try:
+        from datetime import datetime
+        import random
+        # Assume DD/MM/YYYY format based on the UK context in the Order Tracker
+        d = datetime.strptime(date_str, "%d/%m/%Y")
+        formats = [format_date_british, format_date_american]
+        chosen_format = random.choice(formats)
+        return chosen_format(d)
+    except Exception:
+        return date_str
+
+def _spell_out_long_numbers(match):
+    return " ".join(list(match.group(0)))
+
 def clean_text_for_speech(text):
     """
     Cleans up raw text, specifically formatting JSON/markdown so it sounds good
-    when read aloud by the pyttsx3 engine. Applies phonetic overrides.
+    when read aloud by the TTS engine. Applies phonetic overrides, formats dates natively,
+    and spaces out tracking numbers.
     """
+    # Randomly format DD/MM/YYYY dates into spoken words
+    text = re.sub(r'\b\d{1,2}/\d{1,2}/\d{4}\b', _random_date_formatter, text)
+
+    # Space out long alphanumeric strings (6+ chars, containing at least one digit) like tracking numbers
+    text = re.sub(r'\b[A-Z0-9]{6,}\b', lambda m: _spell_out_long_numbers(m) if any(c.isdigit() for c in m.group(0)) else m.group(0), text, flags=re.IGNORECASE)
+
     # Apply phonetic overrides
     for word, override in phonetic_overrides.items():
         # Case-insensitive replace for the whole word
@@ -151,6 +185,9 @@ def clean_text_for_speech(text):
     # Remove markdown code blocks
     text = re.sub(r'```[a-zA-Z]*\n', '', text)
     text = re.sub(r'```', '', text)
+
+    # Strip any leading punctuation that might be lingering from the LLM prompt start
+    text = text.strip().lstrip('.,!?;:- ')
     return text.strip()
 
 # Initialize OpenAI client to connect to local LM Studio server
