@@ -724,6 +724,7 @@ def _process_llm_response_inner():
         # Stream the response
         ai_text = ""
         sentence_buffer = ""
+        has_started_printing = False
 
         # Iterate over the streamed chunks
         for chunk in response:
@@ -731,8 +732,24 @@ def _process_llm_response_inner():
 
             if delta.content is not None:
                 token = delta.content
-                if len(ai_text) == 0 and token.startswith('"'):
-                    token = token[1:]
+
+                # Clean up initial garbage tokens (isolated letters, dots, quotes, newlines)
+                # before we start officially streaming to the UI and TTS buffer.
+                if not has_started_printing:
+                    clean_token = token.lstrip(' \n\r\t".,!?;:-')
+                    # If it's just a single random letter (like 'n\n' or 's\n') right at the very start of generation, ignore it.
+                    if len(clean_token.strip()) <= 1 and not clean_token.strip().isalnum():
+                         continue # still garbage
+                    if len(clean_token.strip()) == 1 and clean_token.strip().lower() in ['s', 'n', 'a']:
+                         # Sometimes it outputs a random stray 's' or 'n' before the real sentence.
+                         continue
+
+                    token = clean_token
+                    if token:
+                        has_started_printing = True
+
+                if not has_started_printing:
+                    continue
 
                 ai_text += token
                 sentence_buffer += token
