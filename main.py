@@ -765,11 +765,15 @@ def _process_llm_response_inner():
 
             # Stage 3: Spoon-feed the result to the LLM
             # We replace the user's last message with the spoon-fed prompt.
-            spoon_fed_prompt = f"The user asked: {last_user_text}\n\nHere is the system data:\n{tool_output}\n\nReply to the user using ONLY this data. Do not narrate your process. Give a direct conversational answer."
+            spoon_fed_prompt = f"The user asked: {last_user_text}\n\nHere is the system data:\n{tool_output}\n\nReply to the user using ONLY this data. Do not narrate your process. Give a direct conversational answer. If the user asks you to perform an action (like editing, updating, or deleting) that is not reflected in the provided system data, politely inform them that you do not have the capability to do so."
 
             # Temporarily replace the last history item
             exec_history = list(conversation_history)
             exec_history[-1] = {"role": "user", "content": spoon_fed_prompt}
+
+            # Reset Eel's tracking state to guarantee the new streaming bubble isn't attached to the holding message
+            try: eel.streamAIComplete()
+            except: pass
 
             kwargs = {
                 "model": ACTIVE_MODEL_ID,
