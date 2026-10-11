@@ -190,7 +190,14 @@ def clean_text_for_speech(text):
 
     # Strip any leading punctuation that might be lingering from the LLM prompt start
     text = text.strip().lstrip('.,!?;:- ')
-    return text.strip()
+
+    # If the text is exactly 1 character long and is not 'I' or 'a' (or a number),
+    # it is likely a hallucinatory stray letter that got broken off into its own sentence. Drop it.
+    final_clean = text.strip()
+    if len(final_clean) == 1 and final_clean.lower() not in ['a', 'i'] and not final_clean.isdigit():
+        return ""
+
+    return final_clean
 
 # Initialize OpenAI client to connect to local LM Studio server
 # Bionic / LM Studio runs an OpenAI-compatible server typically on port 1234.
@@ -813,12 +820,16 @@ def _process_llm_response_inner():
                 # Sometimes the LLM spits out "s \n\n" or ". r \n\n" before the actual sentence begins.
                 if not has_started_printing:
                     startup_buffer += token
-                    clean_start = startup_buffer.lstrip(' \n\r\t".,!?;:-')
 
-                    # We wait until the LLM has generated a chunk of text that actually looks like the start
-                    # of a real word/sentence (e.g. at least 2 alphanumeric characters long, or a full word).
-                    if len(clean_start.strip()) < 2:
+                    # Wait until we have enough characters to see what's really happening
+                    if len(startup_buffer.strip()) < 3:
                         continue
+
+                    # Clean the buffer by explicitly stripping standalone single letters
+                    # (like 'w\n\n' or 's\n\n') followed by spacing/newlines.
+                    import re
+                    clean_start = re.sub(r'^[a-zA-Z]\s*[\n\r]+\s*', '', startup_buffer.lstrip(' \n\r\t".,!?;:-'))
+                    clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
 
                     # Now that we have a real word starting, we dump the cleaned buffer and set the flag!
                     token = clean_start

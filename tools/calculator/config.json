@@ -7,8 +7,7 @@
         "plus",
         "minus",
         "times",
-        "divided by",
-        "what is"
+        "divided by"
     ],
     "processing_messages": [
         "Crunching the numbers...",
