@@ -191,10 +191,11 @@ def clean_text_for_speech(text):
     # Strip any leading punctuation that might be lingering from the LLM prompt start
     text = text.strip().lstrip('.,!?;:- ')
 
-    # If the text is exactly 1 character long and is not 'I' or 'a' (or a number),
-    # it is likely a hallucinatory stray letter that got broken off into its own sentence. Drop it.
+    # If the text is exactly 1 character long (or number), it is likely a hallucinatory
+    # stray letter that got broken off into its own sentence.
+    # To prevent the TTS from saying random "i" or "a" before the real response, we drop ALL single chars.
     final_clean = text.strip()
-    if len(final_clean) == 1 and final_clean.lower() not in ['a', 'i'] and not final_clean.isdigit():
+    if len(final_clean) == 1 and not final_clean.isdigit():
         return ""
 
     return final_clean
@@ -826,14 +827,17 @@ def _process_llm_response_inner():
                         continue
 
                     # Clean the buffer by explicitly stripping standalone single letters
-                    # (like 'w\n\n' or 's\n\n') followed by spacing/newlines.
+                    # (like 'w\n\n' or 's\n\n' or 'i\n\n') followed by spacing/newlines.
                     import re
                     clean_start = startup_buffer.lstrip(' \n\r\t".,!?;:-')
-                    # Strip single letter followed by space (excluding valid words 'A' and 'I')
-                    clean_start = re.sub(r'^([b-hj-zB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
-                    # Strip single letter followed by punctuation/newline
+                    # Strip ANY single letter followed by newline/punctuation at the start of generation
                     clean_start = re.sub(r'^([a-zA-Z])\s*[\n\r]+\s*', '', clean_start)
                     clean_start = re.sub(r'^([a-zA-Z])\.\s+', '', clean_start)
+
+                    # We also strip single letters followed by space if they aren't forming a valid word sequence,
+                    # but since "I " and "A " are common, we only aggressively strip non-A/I single chars before text
+                    clean_start = re.sub(r'^([b-hj-zB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
+
                     clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
 
                     # Now that we have a real word starting, we dump the cleaned buffer and set the flag!
