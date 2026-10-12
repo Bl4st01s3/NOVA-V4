@@ -22,7 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const micBtn = document.getElementById('mic-btn');
 
     // Global reference to the currently streaming message div
-    window.window.activeStreamingContentDiv = null;
+    window.activeStreamingContentDiv = null;
 
     // Load persistent chat history on boot
     async function loadChatHistory() {
@@ -78,14 +78,16 @@ document.addEventListener("DOMContentLoaded", () => {
                                     return;
                                 }
 
-                                if (window.activeStreamingContentDiv) {
-                                    const textNode = document.createTextNode(token);
-                                    window.activeStreamingContentDiv.appendChild(textNode);
-                                    if (token.includes('\n')) {
-                                        window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
-                                    }
-                                    window.scrollToBottom();
+                                if (!window.activeStreamingContentDiv) {
+                                    window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
                                 }
+
+                                const textNode = document.createTextNode(token);
+                                window.activeStreamingContentDiv.appendChild(textNode);
+                                if (token.includes('\n')) {
+                                    window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                                }
+                                window.scrollToBottom();
                             }
                         }
                     }
@@ -869,7 +871,14 @@ document.addEventListener("DOMContentLoaded", () => {
     // Called by python when the stream is completely finished
     window.streamAIComplete = function() {
         window.activeStreamingContentDiv = null;
+        isProcessing = false;
+        const inputText = document.getElementById('input-text');
+        if (inputText) {
+            inputText.disabled = false;
+            inputText.focus();
+        }
     }
+    eel.expose(window.streamAIComplete, "streamAIComplete");
 
     function appendLoading() {
         const id = 'loading-' + Date.now();
@@ -1637,13 +1646,6 @@ function streamAIToken(token) {
         const chatBox = document.getElementById('chat-history');
         chatBox.scrollTop = chatBox.scrollHeight;
     }
-}
-
-eel.expose(streamAIComplete);
-function streamAIComplete() {
-    isProcessing = false;
-    document.getElementById('input-text').disabled = false;
-    document.getElementById('input-text').focus();
 }
 
 eel.expose(clearLastAIMessage);
