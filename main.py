@@ -828,7 +828,12 @@ def _process_llm_response_inner():
                     # Clean the buffer by explicitly stripping standalone single letters
                     # (like 'w\n\n' or 's\n\n') followed by spacing/newlines.
                     import re
-                    clean_start = re.sub(r'^[a-zA-Z]\s*[\n\r]+\s*', '', startup_buffer.lstrip(' \n\r\t".,!?;:-'))
+                    clean_start = startup_buffer.lstrip(' \n\r\t".,!?;:-')
+                    # Strip single letter followed by space (excluding valid words 'A' and 'I')
+                    clean_start = re.sub(r'^([b-hj-zB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
+                    # Strip single letter followed by punctuation/newline
+                    clean_start = re.sub(r'^([a-zA-Z])\s*[\n\r]+\s*', '', clean_start)
+                    clean_start = re.sub(r'^([a-zA-Z])\.\s+', '', clean_start)
                     clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
 
                     # Now that we have a real word starting, we dump the cleaned buffer and set the flag!
