@@ -779,9 +779,8 @@ def _process_llm_response_inner():
             exec_history = list(conversation_history)
             exec_history[-1] = {"role": "user", "content": spoon_fed_prompt}
 
-            # Reset Eel's tracking state to guarantee the new streaming bubble isn't attached to the holding message
-            try: eel.streamAIComplete()
-            except: pass
+            # DO NOT call streamAIComplete() here. The frontend has already created the empty streaming bubble
+            # and may be polling tokens. Nullifying the bubble here causes a race condition where the stream is split.
 
             kwargs = {
                 "model": ACTIVE_MODEL_ID,
@@ -839,6 +838,12 @@ def _process_llm_response_inner():
                     clean_start = re.sub(r'^([b-hj-zB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
 
                     clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
+
+                    # If the entire buffer was just a stray letter that got stripped, don't start yet.
+                    if not clean_start:
+                        # Reset the buffer so we don't infinitely accumulate stripped characters
+                        startup_buffer = ""
+                        continue
 
                     # Now that we have a real word starting, we dump the cleaned buffer and set the flag!
                     token = clean_start
