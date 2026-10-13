@@ -80,22 +80,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         const data = await response.json();
                         if (data.messages && data.messages.length > 0) {
                             for (let msg of data.messages) {
-                                if (msg.type === 'stream_end') {
-                                    clearInterval(window.activeStreamingPollInterval);
-                                    window.activeStreamingPollInterval = null;
-                                    window.activeStreamingContentDiv = null;
-
-                                    // Unlock input
-                                    isProcessing = false;
-                                    const inputText = document.getElementById('input-text');
-                                    if (inputText) {
-                                        inputText.disabled = false;
-                                        inputText.focus();
+                                if (msg.type === 'stream_start') {
+                                    // If we somehow already have an empty active bubble, reuse it. Otherwise, create a new one.
+                                    if (!window.activeStreamingContentDiv || window.activeStreamingContentDiv.innerHTML.trim() !== '') {
+                                        window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
                                     }
-                                    return;
-                                } else if (msg.type === 'stream_start') {
-                                    // Guarantee we have a fresh bubble
-                                    window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
                                 } else if (msg.type === 'stream_chunk') {
                                     // Fallback creation
                                     if (!window.activeStreamingContentDiv) {
@@ -112,6 +101,19 @@ document.addEventListener("DOMContentLoaded", () => {
                                     // Pushes a standalone fully-formed message (like a holding message) into its own bubble instantly
                                     window.activeStreamingContentDiv = null; // Close current bubble if open
                                     appendMessage('assistant', msg.text);
+                                } else if (msg.type === 'stream_end') {
+                                    clearInterval(window.activeStreamingPollInterval);
+                                    window.activeStreamingPollInterval = null;
+                                    window.activeStreamingContentDiv = null;
+
+                                    // Unlock input
+                                    isProcessing = false;
+                                    const inputText = document.getElementById('input-text');
+                                    if (inputText) {
+                                        inputText.disabled = false;
+                                        inputText.focus();
+                                    }
+                                    break;
                                 }
                             }
                         }

@@ -484,6 +484,7 @@ def process_llm_response():
         error_trace = traceback.format_exc()
         log_error(f"CRITICAL ERROR in background thread: {error_trace}")
         message_queue.put({"type": "full_message", "text": "System Error: A critical failure occurred in the background thread. Check nova.log for details."})
+        message_queue.put({"type": "stream_end"})
         try: eel.setNovaState('error')
         except: pass
 
@@ -552,6 +553,7 @@ def _process_llm_response_inner():
                 if not models.data:
                     error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
                     message_queue.put({"type": "full_message", "text": error_msg})
+                    message_queue.put({"type": "stream_end"})
                     try: eel.setNovaState('error')
                     except: pass
                     return "ERROR_NO_MODEL"
@@ -898,6 +900,7 @@ def _process_llm_response_inner():
     except Exception as e:
         log_error(f"Error during response generation: {e}")
         message_queue.put({"type": "full_message", "text": "System Error: I encountered a critical failure. Check nova.log for details."})
+        message_queue.put({"type": "stream_end"})
         try: eel.setNovaState('error')
         except: pass
 
@@ -1661,8 +1664,11 @@ def generate_presence_message(event_type):
         # Push message directly to the chat UI and history
         conversation_history.append({"role": "assistant", "content": ai_text})
 
-        # Route to queue instead of async websocket push
-        message_queue.put({"type": "full_message", "text": ai_text})
+        # For background presence updates, we must use the direct WebSocket push because the frontend
+        # is likely idle and not running the HTTP poller.
+        # We wrap these in separate try/except blocks because Eel broadcasts to all open HTML windows.
+        try: eel.pushAIMessage(ai_text)
+        except Exception as e: pass
 
         try: eel.setNovaState('idle')
         except Exception as e: pass
