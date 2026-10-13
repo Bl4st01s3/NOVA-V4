@@ -833,9 +833,12 @@ def _process_llm_response_inner():
                     clean_start = re.sub(r'^([a-zA-Z])\s*[\n\r]+\s*', '', clean_start)
                     clean_start = re.sub(r'^([a-zA-Z])\.\s+', '', clean_start)
 
-                    # We also strip single letters followed by space if they aren't forming a valid word sequence,
-                    # but since "I " and "A " are common, we only aggressively strip non-A/I single chars before text
-                    clean_start = re.sub(r'^([b-hj-zB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
+                    # We also aggressively strip all single lowercase letters followed by spaces/newlines
+                    # since Llama models often hallucinate "g" or "i" at the beginning of a tool callback response.
+                    clean_start = re.sub(r'^([a-z])\s+(?=[a-zA-Z])', '', clean_start)
+
+                    # Also strip non-A/I uppercase letters
+                    clean_start = re.sub(r'^([B-HJ-ZB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
 
                     clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
 
@@ -851,6 +854,7 @@ def _process_llm_response_inner():
 
                 ai_text += token
                 sentence_buffer += token
+                # print_and_log(f"DEBUG TOKEN: {repr(token)}")
                 token_queue.put(token)
 
                 for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
