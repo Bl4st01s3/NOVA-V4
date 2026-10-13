@@ -1646,17 +1646,6 @@ document.getElementById('save-keywords-btn').addEventListener('click', async () 
 });
 
 
-eel.expose(streamAIToken);
-function streamAIToken(token) {
-    const aiMessages = document.querySelectorAll('.ai-message');
-    if (aiMessages.length > 0) {
-        const lastMessage = aiMessages[aiMessages.length - 1];
-        lastMessage.innerHTML += token.replace(/\n/g, '<br>');
-        const chatBox = document.getElementById('chat-history');
-        chatBox.scrollTop = chatBox.scrollHeight;
-    }
-}
-
 eel.expose(clearLastAIMessage);
 function clearLastAIMessage() {
     const aiMessages = document.querySelectorAll('.ai-message');

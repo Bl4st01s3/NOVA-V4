@@ -218,6 +218,9 @@ input[type="text"]:hover, select:hover, .cyber-input:hover {
     border: 1px solid;
     position: relative;
     line-height: 1.4;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    max-width: 100%;
 }
 
 .message.system .message-content, .message.assistant .message-content {

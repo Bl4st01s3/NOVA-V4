@@ -852,9 +852,15 @@ def _process_llm_response_inner():
                     token = clean_start
                     has_started_printing = True
 
+                    # Double check we didn't just accept a lone punctuation mark like `.`
+                    # If it's literally just punctuation or space, strip it out.
+                    if not token.strip('. ,!?;:-\n\r\t"'):
+                        has_started_printing = False
+                        startup_buffer = ""
+                        continue
+
                 ai_text += token
                 sentence_buffer += token
-                # print_and_log(f"DEBUG TOKEN: {repr(token)}")
                 token_queue.put(token)
 
                 for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
