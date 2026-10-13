@@ -72,31 +72,47 @@ document.addEventListener("DOMContentLoaded", () => {
                 clearInterval(window.activeStreamingPollInterval);
             }
 
-            // Start polling the local HTTP queue for tokens
+            // Start polling the local HTTP queue for messages
             window.activeStreamingPollInterval = setInterval(async () => {
                 try {
                     const response = await fetch('http://127.0.0.1:54321/stream');
                     if (response.ok) {
                         const data = await response.json();
-                        if (data.tokens && data.tokens.length > 0) {
-                            for (let token of data.tokens) {
-                                if (token === '[DONE]') {
+                        if (data.messages && data.messages.length > 0) {
+                            for (let msg of data.messages) {
+                                if (msg.type === 'stream_end') {
                                     clearInterval(window.activeStreamingPollInterval);
                                     window.activeStreamingPollInterval = null;
                                     window.activeStreamingContentDiv = null;
+
+                                    // Unlock input
+                                    isProcessing = false;
+                                    const inputText = document.getElementById('input-text');
+                                    if (inputText) {
+                                        inputText.disabled = false;
+                                        inputText.focus();
+                                    }
                                     return;
-                                }
-
-                                if (!window.activeStreamingContentDiv) {
+                                } else if (msg.type === 'stream_start') {
+                                    // Guarantee we have a fresh bubble
                                     window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
-                                }
+                                } else if (msg.type === 'stream_chunk') {
+                                    // Fallback creation
+                                    if (!window.activeStreamingContentDiv) {
+                                        window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
+                                    }
 
-                                const textNode = document.createTextNode(token);
-                                window.activeStreamingContentDiv.appendChild(textNode);
-                                if (token.includes('\n')) {
-                                    window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                                    const textNode = document.createTextNode(msg.text);
+                                    window.activeStreamingContentDiv.appendChild(textNode);
+                                    if (msg.text.includes('\n')) {
+                                        window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                                    }
+                                    window.scrollToBottom();
+                                } else if (msg.type === 'full_message') {
+                                    // Pushes a standalone fully-formed message (like a holding message) into its own bubble instantly
+                                    window.activeStreamingContentDiv = null; // Close current bubble if open
+                                    appendMessage('assistant', msg.text);
                                 }
-                                window.scrollToBottom();
                             }
                         }
                     }
@@ -877,18 +893,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }
 
-    // Called by python when the stream is completely finished
-    window.streamAIComplete = function() {
-        window.activeStreamingContentDiv = null;
-        isProcessing = false;
-        const inputText = document.getElementById('input-text');
-        if (inputText) {
-            inputText.disabled = false;
-            inputText.focus();
-        }
-    }
-    eel.expose(window.streamAIComplete, "streamAIComplete");
-
     function appendLoading() {
         const id = 'loading-' + Date.now();
         const messageDiv = document.createElement('div');
@@ -946,16 +950,16 @@ function triggerBootSequence() {
             const response = await fetch('http://127.0.0.1:54321/stream');
             if (response.ok) {
                 const data = await response.json();
-                if (data.tokens && data.tokens.length > 0) {
-                    for (let token of data.tokens) {
-                        if (token === '[DONE]') {
+                if (data.messages && data.messages.length > 0) {
+                    for (let msg of data.messages) {
+                        if (msg.type === 'stream_end') {
                             clearInterval(pollInterval);
                             window.activeStreamingContentDiv = null;
                             return;
                         }
 
                         // If this is the first token of the boot sequence, create the bubble
-                        if (!window.activeStreamingContentDiv) {
+                        if (!window.activeStreamingContentDiv && (msg.type === 'stream_start' || msg.type === 'stream_chunk')) {
                             // Quick manual creation of the bubble from outside DOMContentLoaded
                             const messageDiv = document.createElement('div');
                             messageDiv.classList.add('message', 'assistant');
@@ -969,12 +973,14 @@ function triggerBootSequence() {
                             window.activeStreamingContentDiv = content;
                         }
 
-                        const textNode = document.createTextNode(token);
-                        window.activeStreamingContentDiv.appendChild(textNode);
-                        if (token.includes('\n')) {
-                            window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                        if (msg.type === 'stream_chunk') {
+                            const textNode = document.createTextNode(msg.text);
+                            window.activeStreamingContentDiv.appendChild(textNode);
+                            if (msg.text.includes('\n')) {
+                                window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                            }
+                            window.scrollToBottom();
                         }
-                        window.scrollToBottom();
                     }
                 }
             }

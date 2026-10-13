@@ -32,8 +32,8 @@ import time
 ACTIVE_MODEL_ID = None
 import queue
 
-# Queue to hold text tokens to bypass Eel WebSockets
-token_queue = queue.Queue()
+# Unified message queue to serialize all UI updates (holding messages, text streams, commands)
+message_queue = queue.Queue()
 tts_queue = queue.Queue()
 import logging
 import subprocess
@@ -483,9 +483,7 @@ def process_llm_response():
         import traceback
         error_trace = traceback.format_exc()
         log_error(f"CRITICAL ERROR in background thread: {error_trace}")
-        try: eel.pushAIMessage(f"System Error: A critical failure occurred in the background thread. Check nova.log for details.")
-        except: pass
-        token_queue.put('[DONE]')
+        message_queue.put({"type": "full_message", "text": "System Error: A critical failure occurred in the background thread. Check nova.log for details."})
         try: eel.setNovaState('error')
         except: pass
 
@@ -553,9 +551,7 @@ def _process_llm_response_inner():
                 models = client.models.list()
                 if not models.data:
                     error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
-                    try: eel.pushAIMessage(error_msg)
-                    except: pass
-                    token_queue.put('[DONE]')
+                    message_queue.put({"type": "full_message", "text": error_msg})
                     try: eel.setNovaState('error')
                     except: pass
                     return "ERROR_NO_MODEL"
@@ -646,13 +642,14 @@ def _process_llm_response_inner():
                                 if messages:
                                     holding_msg = random.choice(messages)
                                     print_and_log(f"NOVA (Holding): {holding_msg}")
-                                    try: eel.pushAIMessage(f"{holding_msg}")
-                                    except: pass
+
+                                    # Enqueue the holding message instead of pushing async
+                                    message_queue.put({"type": "full_message", "text": holding_msg})
+
                                     clean_speech = clean_text_for_speech(holding_msg)
                                     if clean_speech:
                                         tts_queue.put(clean_speech)
-                                        # Let the UI breathe so the message renders
-                                        time.sleep(0.1)
+
                                     did_play_holding_msg = True
                         except Exception:
                             pass
@@ -779,8 +776,8 @@ def _process_llm_response_inner():
             exec_history = list(conversation_history)
             exec_history[-1] = {"role": "user", "content": spoon_fed_prompt}
 
-            # DO NOT call streamAIComplete() here. The frontend has already created the empty streaming bubble
-            # and may be polling tokens. Nullifying the bubble here causes a race condition where the stream is split.
+            # Tell the frontend a new stream is starting (in case it needs to create a new bubble after a holding message)
+            message_queue.put({"type": "stream_start"})
 
             kwargs = {
                 "model": ACTIVE_MODEL_ID,
@@ -794,6 +791,7 @@ def _process_llm_response_inner():
 
         else:
             # Stage 2: Normal LLM Chat (No Tool Needed)
+            message_queue.put({"type": "stream_start"})
             kwargs = {
                 "model": ACTIVE_MODEL_ID,
                 "messages": conversation_history,
@@ -861,7 +859,8 @@ def _process_llm_response_inner():
 
                 ai_text += token
                 sentence_buffer += token
-                token_queue.put(token)
+
+                message_queue.put({"type": "stream_chunk", "text": token})
 
                 for punc in ['. ', '! ', '? ', '.\n', '!\n', '?\n']:
                     if punc in sentence_buffer:
@@ -889,7 +888,7 @@ def _process_llm_response_inner():
             "content": ai_text
         })
         save_chat_history()
-        token_queue.put('[DONE]')
+        message_queue.put({"type": "stream_end"})
 
         try:
             eel.setNovaState('idle')
@@ -898,9 +897,7 @@ def _process_llm_response_inner():
 
     except Exception as e:
         log_error(f"Error during response generation: {e}")
-        try: eel.pushAIMessage(f"System Error: I encountered a critical failure. Check nova.log for details.")
-        except: pass
-        token_queue.put('[DONE]')
+        message_queue.put({"type": "full_message", "text": "System Error: I encountered a critical failure. Check nova.log for details."})
         try: eel.setNovaState('error')
         except: pass
 
@@ -1664,11 +1661,8 @@ def generate_presence_message(event_type):
         # Push message directly to the chat UI and history
         conversation_history.append({"role": "assistant", "content": ai_text})
 
-        # We wrap these in separate try/except blocks because Eel broadcasts to all open HTML windows.
-        # pushAIMessage exists in index.html but not obs_overlay.html, so it will throw an exception there.
-        # We don't want that exception to stop the OBS state from reverting to idle.
-        try: eel.pushAIMessage(ai_text)
-        except Exception as e: pass
+        # Route to queue instead of async websocket push
+        message_queue.put({"type": "full_message", "text": ai_text})
 
         try: eel.setNovaState('idle')
         except Exception as e: pass
@@ -1688,10 +1682,10 @@ class PresenceRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == '/stream':
-            tokens = []
-            while not token_queue.empty():
-                tokens.append(token_queue.get())
-            self._send_response(200, {"tokens": tokens})
+            messages = []
+            while not message_queue.empty():
+                messages.append(message_queue.get())
+            self._send_response(200, {"messages": messages})
             return
 
         if self.path == '/obs':
