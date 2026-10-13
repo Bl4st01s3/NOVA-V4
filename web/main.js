@@ -24,6 +24,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Global reference to the currently streaming message div
     window.activeStreamingContentDiv = null;
 
+    // Global lock for the streaming poll loop
+    window.activeStreamingPollInterval = null;
+
     // Load persistent chat history on boot
     async function loadChatHistory() {
         try {
@@ -64,8 +67,13 @@ document.addEventListener("DOMContentLoaded", () => {
         try {
             eel.send_message_to_nova(text)();
 
+            // Clear any old stuck intervals
+            if (window.activeStreamingPollInterval) {
+                clearInterval(window.activeStreamingPollInterval);
+            }
+
             // Start polling the local HTTP queue for tokens
-            const pollInterval = setInterval(async () => {
+            window.activeStreamingPollInterval = setInterval(async () => {
                 try {
                     const response = await fetch('http://127.0.0.1:54321/stream');
                     if (response.ok) {
@@ -73,7 +81,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (data.tokens && data.tokens.length > 0) {
                             for (let token of data.tokens) {
                                 if (token === '[DONE]') {
-                                    clearInterval(pollInterval);
+                                    clearInterval(window.activeStreamingPollInterval);
+                                    window.activeStreamingPollInterval = null;
                                     window.activeStreamingContentDiv = null;
                                     return;
                                 }
