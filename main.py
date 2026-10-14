@@ -29,7 +29,9 @@ import threading
 import json
 import time
 
-ACTIVE_MODEL_ID = None
+# Dual-LLM Constants
+DECISION_MODEL_ID = "d1-3B-Q4_K_M.gguf"
+MAIN_MODEL_ID = "Llama-3.2-3B-Instruct-Q4_K_S.gguf"
 import queue
 
 # Unified message queue to serialize all UI updates (holding messages, text streams, commands)
@@ -546,23 +548,18 @@ def _process_llm_response_inner():
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     try:
-        global ACTIVE_MODEL_ID
-        if not ACTIVE_MODEL_ID or ACTIVE_MODEL_ID == "local-model":
-            try:
-                models = client.models.list()
-                if not models.data:
-                    error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please load a model (e.g., Llama 3.1 8B) in the LM Studio developer page."
-                    message_queue.put({"type": "full_message", "text": error_msg})
-                    message_queue.put({"type": "stream_end"})
-                    try: eel.setNovaState('error')
-                    except: pass
-                    return "ERROR_NO_MODEL"
-                ACTIVE_MODEL_ID = models.data[0].id
-            except Exception as e:
-                log_error(f"Failed to fetch model list from LM Studio: {e}")
-                ACTIVE_MODEL_ID = "local-model"
-
-        print_and_log(f"Using model: {ACTIVE_MODEL_ID}")
+        # Check if models are loaded (but we ignore the active ID and strictly use our dual LLMs)
+        try:
+            models = client.models.list()
+            if not models.data:
+                error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please ensure both models are loaded."
+                message_queue.put({"type": "full_message", "text": error_msg})
+                message_queue.put({"type": "stream_end"})
+                try: eel.setNovaState('error')
+                except: pass
+                return "ERROR_NO_MODEL"
+        except Exception as e:
+            log_error(f"Failed to fetch model list from LM Studio: {e}")
 
         # Check if the last message was from the user
         last_user_text = ""
@@ -673,17 +670,16 @@ def _process_llm_response_inner():
                     if tool_schema:
                         # Fast LLM pass to extract parameters
                         extract_history = list(conversation_history)
+                        schema_str = json.dumps(tool_schema)
                         extract_history.append({
                             "role": "system",
-                            "content": f"You must use the '{tool_name}' tool. Output ONLY the raw JSON arguments needed for the tool based on the user's request. DO NOT output any other text."
+                            "content": f"You must use the '{tool_name}' tool to fulfill the user's request. Output ONLY the raw JSON arguments dictionary required by the tool. DO NOT output any conversational text or markdown formatting.\n\nTool Schema: {schema_str}"
                         })
 
                         kwargs_extract = {
-                            "model": ACTIVE_MODEL_ID,
+                            "model": DECISION_MODEL_ID,
                             "messages": extract_history,
-                            "temperature": 0.1, # Low temp for strict JSON
-                            "tools": [tool_schema],
-                            "tool_choice": "auto"
+                            "temperature": 0.1 # Low temp for strict JSON
                         }
 
                         response_extract = client.chat.completions.create(**kwargs_extract)
@@ -782,7 +778,7 @@ def _process_llm_response_inner():
             message_queue.put({"type": "stream_start"})
 
             kwargs = {
-                "model": ACTIVE_MODEL_ID,
+                "model": MAIN_MODEL_ID,
                 "messages": exec_history,
                 "temperature": 0.7,
                 "stream": True
@@ -795,7 +791,7 @@ def _process_llm_response_inner():
             # Stage 2: Normal LLM Chat (No Tool Needed)
             message_queue.put({"type": "stream_start"})
             kwargs = {
-                "model": ACTIVE_MODEL_ID,
+                "model": MAIN_MODEL_ID,
                 "messages": conversation_history,
                 "temperature": 0.7,
                 "stream": True
@@ -1624,17 +1620,14 @@ def generate_presence_message(event_type):
         return
 
     try:
-        global ACTIVE_MODEL_ID
-        if not ACTIVE_MODEL_ID or ACTIVE_MODEL_ID == "local-model":
-            try:
-                models = client.models.list()
-                if models.data:
-                    ACTIVE_MODEL_ID = models.data[0].id
-                else:
-                    return
-            except Exception as e:
-                log_error(f"Presence webhook failed to fetch model: {e}")
+        # Ensure Bionic engine is online before triggering presence logic
+        try:
+            models = client.models.list()
+            if not models.data:
                 return
+        except Exception as e:
+            log_error(f"Presence webhook failed to fetch model list: {e}")
+            return
 
         # We append directly to the main conversation history to leverage the existing KV Cache.
         # Sending a one-off temp_history array causes the LLM engine to completely wipe the KV Cache
@@ -1647,7 +1640,7 @@ def generate_presence_message(event_type):
 
         tools_array = build_tools_array()
         kwargs = {
-            "model": ACTIVE_MODEL_ID,
+            "model": MAIN_MODEL_ID,
             "messages": conversation_history,
             "temperature": 0.8
         }
@@ -1833,22 +1826,18 @@ def start_app():
         try:
             print_and_log("[SYSTEM] Pinging Bionic Engine...")
             # If this succeeds, it means LM studio is responding
-            global ACTIVE_MODEL_ID
             models = client.models.list()
             if models.data:
-                ACTIVE_MODEL_ID = models.data[0].id
                 try: eel.setSystemStatus('online', 'Bionic Engine Online')
                 except: pass
                 print_and_log("[SYSTEM] Bionic Engine Online. Triggering boot sequence.")
                 try: eel.triggerBootSequence()
                 except: pass
             else:
-                ACTIVE_MODEL_ID = "local-model"
                 try: eel.setSystemStatus('error', 'No Model Loaded')
                 except: pass
                 print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded.")
         except Exception as e:
-            ACTIVE_MODEL_ID = "local-model"
             try: eel.setSystemStatus('error', 'Bionic Engine Offline')
             except: pass
             print_and_log(f"[SYSTEM] Bionic Engine Offline or Unreachable: {e}")
