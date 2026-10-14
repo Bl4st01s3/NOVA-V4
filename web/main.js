@@ -1507,8 +1507,11 @@ document.getElementById('save-config-btn').addEventListener('click', async () =>
                          let val = input.value;
                          if (input.type === 'checkbox') val = input.checked;
                          else if (input.type === 'number') val = parseFloat(input.value);
-                         else if (realKey === 'router_keywords' || realKey === 'processing_messages') {
+                         else if (realKey === 'router_keywords') {
                              val = val.split(',').map(s => s.trim()).filter(s => s);
+                         }
+                         else if (realKey === 'processing_messages') {
+                             val = val.split(',').map(s => s.trim()).filter(s => s.replace(/[.,!?;:]/g, '').length > 0);
                          }
                          newConfig[realKey] = val;
                      }
