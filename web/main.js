@@ -99,6 +99,10 @@ document.addEventListener("DOMContentLoaded", () => {
                                     window.scrollToBottom();
                                 } else if (msg.type === 'full_message') {
                                     // Pushes a standalone fully-formed message (like a holding message) into its own bubble instantly
+                                    // If there is an empty bubble (like the one created when hitting send), remove it first so we don't leave blanks.
+                                    if (window.activeStreamingContentDiv && window.activeStreamingContentDiv.innerHTML.trim() === '') {
+                                        window.activeStreamingContentDiv.parentElement.remove();
+                                    }
                                     window.activeStreamingContentDiv = null; // Close current bubble if open
                                     appendMessage('assistant', msg.text);
                                 } else if (msg.type === 'stream_end') {
