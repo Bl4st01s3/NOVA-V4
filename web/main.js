@@ -593,6 +593,85 @@ document.addEventListener("DOMContentLoaded", () => {
     // Load dynamic tools after a small delay to ensure Eel is ready
     setTimeout(loadDynamicTools, 500);
 
+    // Model Configuration Logic
+    async function initModelConfig() {
+        const mainInput = document.getElementById('config-main-model');
+        const decisionInput = document.getElementById('config-decision-model');
+        const btnBrowseMain = document.getElementById('btn-browse-main-model');
+        const btnBrowseDecision = document.getElementById('btn-browse-decision-model');
+        const btnSaveModels = document.getElementById('btn-save-models');
+
+        // Load saved values from python (or localStorage fallback if needed, but python config is better. We'll use localStorage for now to keep it simple in the UI, then pass to python on save, or fetch from python if you have a getter)
+        try {
+            const config = await eel.get_models_config()();
+            if (config) {
+                mainInput.value = config.main_model || "";
+                decisionInput.value = config.decision_model || "";
+            }
+        } catch (e) {
+            console.error("Failed to load models config:", e);
+            // Fallback to localStorage if Python fails or isn't ready
+            mainInput.value = localStorage.getItem('nova_main_model') || "";
+            decisionInput.value = localStorage.getItem('nova_decision_model') || "";
+        }
+
+        btnBrowseMain.onclick = async () => {
+            try {
+                const selectedFile = await eel.open_file_dialog()();
+                if (selectedFile) {
+                    mainInput.value = selectedFile;
+                }
+            } catch (e) {
+                console.error("Failed to open file dialog", e);
+            }
+        };
+
+        btnBrowseDecision.onclick = async () => {
+            try {
+                const selectedFile = await eel.open_file_dialog()();
+                if (selectedFile) {
+                    decisionInput.value = selectedFile;
+                }
+            } catch (e) {
+                console.error("Failed to open file dialog", e);
+            }
+        };
+
+        btnSaveModels.onclick = async () => {
+            const mainModel = mainInput.value.trim();
+            const decisionModel = decisionInput.value.trim();
+
+            const oldText = btnSaveModels.innerText;
+            btnSaveModels.innerText = "[ SAVING... ]";
+            btnSaveModels.disabled = true;
+
+            localStorage.setItem('nova_main_model', mainModel);
+            localStorage.setItem('nova_decision_model', decisionModel);
+
+            try {
+                // We will implement this eel function next
+                await eel.save_models_config({
+                    "main_model": mainModel,
+                    "decision_model": decisionModel
+                })();
+
+                // Trigger model loading
+                btnSaveModels.innerText = "[ MODELS LOADED ]";
+                setTimeout(() => {
+                    btnSaveModels.innerText = oldText;
+                    btnSaveModels.disabled = false;
+                }, 2000);
+            } catch (e) {
+                console.error("Failed to save models config:", e);
+                btnSaveModels.innerText = "[ ERROR ]";
+                setTimeout(() => {
+                    btnSaveModels.innerText = oldText;
+                    btnSaveModels.disabled = false;
+                }, 2000);
+            }
+        };
+    }
+
     // Audio Device Selection Logic
     async function loadAudioDevices() {
         const deviceSelect = document.getElementById('audio-device-select');
@@ -847,6 +926,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     setTimeout(() => {
+        initModelConfig();
         loadAudioDevices();
         initAudioFilters();
         loadTTSVoices();

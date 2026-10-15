@@ -99,6 +99,30 @@
                 </div>
                 <div class="settings-content">
 
+                    <!-- Model Configuration -->
+                    <div class="settings-card">
+                        <h4>AI Engine Configuration</h4>
+                        <p style="font-size: 10px; color: #888; margin-bottom: 15px;">Select the local .gguf models for the Bionic Engine to load.</p>
+
+                        <div class="form-group" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px;">
+                            <label style="color: var(--cyan); font-size: 12px;">Main Conversational Model (e.g. Llama 3B):</label>
+                            <div style="display: flex; gap: 10px; width: 100%;">
+                                <input type="text" id="config-main-model" class="cyber-input" style="width: 100%;" placeholder="Path to main model...">
+                                <button id="btn-browse-main-model" class="cyber-btn" style="padding: 5px 15px; white-space: nowrap;">BROWSE</button>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px;">
+                            <label style="color: var(--cyan); font-size: 12px;">Decision/Routing Model (e.g. LiquidAI 3B):</label>
+                            <div style="display: flex; gap: 10px; width: 100%;">
+                                <input type="text" id="config-decision-model" class="cyber-input" style="width: 100%;" placeholder="Path to decision model...">
+                                <button id="btn-browse-decision-model" class="cyber-btn" style="padding: 5px 15px; white-space: nowrap;">BROWSE</button>
+                            </div>
+                        </div>
+
+                        <button id="btn-save-models" class="cyber-btn" style="width: 100%; margin-top: 5px;">[ APPLY & LOAD MODELS ]</button>
+                    </div>
+
                     <div class="settings-card" id="vp-card-dashboard">
                         <h4>Voice Profiles (Speaker Verification)</h4>
                         <p class="card-desc">Enroll user voices so NOVA can identify who is speaking and ignore background noise (e.g. TVs).</p>
