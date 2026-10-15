@@ -29,10 +29,25 @@ import threading
 import json
 import time
 
-# Dual-LLM Constants
-DECISION_MODEL_ID = "d1-3B-Q4_K_M.gguf"
-MAIN_MODEL_ID = "Llama-3.2-3B-Instruct-Q4_K_S.gguf"
+# Dual-LLM Constants / Config
+MODELS_CONFIG_FILE = "models_config.json"
+DECISION_MODEL_ID = "d1-3B-Q4_K_M.gguf" # Fallback Default
+MAIN_MODEL_ID = "Llama-3.2-3B-Instruct-Q4_K_S.gguf" # Fallback Default
 import queue
+
+def load_models_config():
+    global DECISION_MODEL_ID, MAIN_MODEL_ID
+    if os.path.exists(MODELS_CONFIG_FILE):
+        try:
+            with open(MODELS_CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                MAIN_MODEL_ID = config.get("main_model", MAIN_MODEL_ID)
+                DECISION_MODEL_ID = config.get("decision_model", DECISION_MODEL_ID)
+        except Exception as e:
+            logging.error(f"Failed to load models config: {e}")
+
+load_models_config()
+
 
 # Unified message queue to serialize all UI updates (holding messages, text streams, commands)
 message_queue = queue.Queue()
@@ -1323,6 +1338,56 @@ def update_briefing_prefs(prefs):
 VOICE_PROFILES_FILE = "voice_profiles.json"
 
 @eel.expose
+def get_models_config():
+    """Fetches the current models configuration for the UI."""
+    if os.path.exists(MODELS_CONFIG_FILE):
+        try:
+            with open(MODELS_CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            log_error(f"Failed to load models config: {e}")
+    return {"main_model": MAIN_MODEL_ID, "decision_model": DECISION_MODEL_ID}
+
+@eel.expose
+def save_models_config(config):
+    """Saves the models configuration and reloads them."""
+    global MAIN_MODEL_ID, DECISION_MODEL_ID
+
+    try:
+        with open(MODELS_CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+
+        # Update globals
+        MAIN_MODEL_ID = config.get("main_model", MAIN_MODEL_ID)
+        DECISION_MODEL_ID = config.get("decision_model", DECISION_MODEL_ID)
+        log_info(f"Models configured updated. Main: {MAIN_MODEL_ID}, Decision: {DECISION_MODEL_ID}")
+
+        # Immediately trigger background load for the new models using lms CLI
+        def reload_models():
+            try:
+                # We can load models via LM Studio CLI
+                creationflags = 0
+                if os.path.exists("models_config.json") and os.name == 'nt':
+                    creationflags = subprocess.CREATE_NO_WINDOW
+
+                log_info(f"Loading Main Model: {MAIN_MODEL_ID}")
+                subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
+
+                log_info(f"Loading Decision Model: {DECISION_MODEL_ID}")
+                subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
+
+                log_info("Successfully hot-reloaded models into Bionic Engine.")
+                eel.pushAIMessage("Models successfully loaded and ready.")()
+            except Exception as e:
+                log_error(f"Failed to hot-reload one or more models: {e}")
+                eel.pushAIMessage("Failed to load models into Bionic Engine. Check logs.")()
+
+        threading.Thread(target=reload_models, daemon=True).start()
+
+    except Exception as e:
+        log_error(f"Failed to save models config: {e}")
+
+@eel.expose
 def get_voice_profiles():
     """Loads voice profiles from disk so they survive updates and cache clears."""
     if os.path.exists(VOICE_PROFILES_FILE):
@@ -1834,9 +1899,28 @@ def start_app():
                 try: eel.triggerBootSequence()
                 except: pass
             else:
-                try: eel.setSystemStatus('error', 'No Model Loaded')
+                # Instead of throwing a "No Model Loaded" error and giving up,
+                # we proactively load the saved models from config since we removed lms load from the bat file
+                try: eel.setSystemStatus('online', 'Loading AI Engine...')
                 except: pass
-                print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded.")
+                print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded. Auto-loading from config...")
+
+                creationflags = 0
+                if os.name == 'nt':
+                    creationflags = subprocess.CREATE_NO_WINDOW
+
+                try:
+                    subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
+                    subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
+                    print_and_log("[SYSTEM] Models successfully auto-loaded. Triggering boot sequence.")
+                    try: eel.setSystemStatus('online', 'Bionic Engine Online')
+                    except: pass
+                    try: eel.triggerBootSequence()
+                    except: pass
+                except Exception as ex:
+                    print_and_log(f"[SYSTEM] Failed to auto-load models: {ex}")
+                    try: eel.setSystemStatus('error', 'Failed to Load Models')
+                    except: pass
         except Exception as e:
             try: eel.setSystemStatus('error', 'Bionic Engine Offline')
             except: pass

@@ -20,12 +20,8 @@ start /B "LM Studio Server" cmd /c "lms server start"
 echo Waiting a few seconds for the server to spin up...
 timeout /t 5 /nobreak > NUL
 
-echo Pre-loading Decision Model (LiquidAI 3B) into the GPU...
-lms load --gpu max "LiquidAI/d1-3B-GGUF/d1-3B-Q4_K_M.gguf" --yes
-
-echo Pre-loading Conversational Model (Llama 3.2 3B) into the GPU...
-lms load --gpu max "bartowski/Llama-3.2-3B-Instruct-GGUF/Llama-3.2-3B-Instruct-Q4_K_S.gguf" --yes
-
 echo Starting NOVA UI...
 :: pythonw runs the script without a terminal window popup
 start pythonw main.py
+
+pause
