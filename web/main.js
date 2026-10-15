@@ -948,10 +948,22 @@ function triggerBootSequence() {
     window.scrollToBottom();
 
     // The python backend will directly capture this hidden command
-    eel.send_message_to_nova("[SYSTEM_BOOT_SEQUENCE]");
+    // We add a slight delay to ensure Eel's bidirectional websocket is fully initialized
+    setTimeout(() => {
+        try {
+            eel.send_message_to_nova("[SYSTEM_BOOT_SEQUENCE]")();
+        } catch (e) {
+            console.error("Failed to send boot sequence to python:", e);
+        }
+    }, 1000);
+
+    // Clear any old stuck intervals
+    if (window.activeStreamingPollInterval) {
+        clearInterval(window.activeStreamingPollInterval);
+    }
 
     // Start polling the local HTTP queue for the response
-    const pollInterval = setInterval(async () => {
+    window.activeStreamingPollInterval = setInterval(async () => {
         try {
             const response = await fetch('http://127.0.0.1:54321/stream');
             if (response.ok) {
@@ -959,7 +971,8 @@ function triggerBootSequence() {
                 if (data.messages && data.messages.length > 0) {
                     for (let msg of data.messages) {
                         if (msg.type === 'stream_end') {
-                            clearInterval(pollInterval);
+                            clearInterval(window.activeStreamingPollInterval);
+                            window.activeStreamingPollInterval = null;
                             window.activeStreamingContentDiv = null;
                             return;
                         }
