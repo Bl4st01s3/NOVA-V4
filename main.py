@@ -1360,7 +1360,7 @@ def save_models_config(config):
         # Update globals
         MAIN_MODEL_ID = config.get("main_model", MAIN_MODEL_ID)
         DECISION_MODEL_ID = config.get("decision_model", DECISION_MODEL_ID)
-        log_info(f"Models configured updated. Main: {MAIN_MODEL_ID}, Decision: {DECISION_MODEL_ID}")
+        print_and_log(f"Models configured updated. Main: {MAIN_MODEL_ID}, Decision: {DECISION_MODEL_ID}")
 
         # Immediately trigger background load for the new models using lms CLI
         def reload_models():
@@ -1370,13 +1370,13 @@ def save_models_config(config):
                 if os.path.exists("models_config.json") and os.name == 'nt':
                     creationflags = subprocess.CREATE_NO_WINDOW
 
-                log_info(f"Loading Main Model: {MAIN_MODEL_ID}")
+                print_and_log(f"Loading Main Model: {MAIN_MODEL_ID}")
                 subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
 
-                log_info(f"Loading Decision Model: {DECISION_MODEL_ID}")
+                print_and_log(f"Loading Decision Model: {DECISION_MODEL_ID}")
                 subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
 
-                log_info("Successfully hot-reloaded models into Bionic Engine.")
+                print_and_log("Successfully hot-reloaded models into Bionic Engine.")
                 eel.pushAIMessage("Models successfully loaded and ready.")()
             except Exception as e:
                 log_error(f"Failed to hot-reload one or more models: {e}")
