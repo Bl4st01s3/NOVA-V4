@@ -1892,10 +1892,13 @@ def start_app():
             print_and_log("[SYSTEM] Pinging Bionic Engine...")
             # If this succeeds, it means LM studio is responding
             models = client.models.list()
-            if models.data:
+            loaded_model_ids = [m.id for m in models.data]
+
+            # Check if both required models are already loaded
+            if MAIN_MODEL_ID in loaded_model_ids and DECISION_MODEL_ID in loaded_model_ids:
                 try: eel.setSystemStatus('online', 'Bionic Engine Online')
                 except: pass
-                print_and_log("[SYSTEM] Bionic Engine Online. Triggering boot sequence.")
+                print_and_log("[SYSTEM] Bionic Engine Online. Both models are loaded. Triggering boot sequence.")
                 try: eel.triggerBootSequence()
                 except: pass
             else:
@@ -1903,15 +1906,18 @@ def start_app():
                 # we proactively load the saved models from config since we removed lms load from the bat file
                 try: eel.setSystemStatus('online', 'Loading AI Engine...')
                 except: pass
-                print_and_log("[SYSTEM] Connected to LM Studio but no model is loaded. Auto-loading from config...")
+                print_and_log("[SYSTEM] Required models missing. Auto-loading from config...")
 
                 creationflags = 0
                 if os.name == 'nt':
                     creationflags = subprocess.CREATE_NO_WINDOW
 
                 try:
-                    subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
-                    subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
+                    if MAIN_MODEL_ID not in loaded_model_ids:
+                        subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
+                    if DECISION_MODEL_ID not in loaded_model_ids:
+                        subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
+
                     print_and_log("[SYSTEM] Models successfully auto-loaded. Triggering boot sequence.")
                     try: eel.setSystemStatus('online', 'Bionic Engine Online')
                     except: pass
