@@ -118,7 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
                                     // Unlock input
                                     isProcessing = false;
-                                    const inputText = document.getElementById('input-text');
+                                    const inputText = document.getElementById('user-input');
                                     if (inputText) {
                                         inputText.disabled = false;
                                         inputText.focus();
