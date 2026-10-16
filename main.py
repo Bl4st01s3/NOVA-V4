@@ -602,13 +602,15 @@ def _process_llm_response_inner():
                 except: pass
                 return "ERROR_NO_MODEL"
 
-            # Temporarily override the globals with the EXACT matched IDs for the duration of this specific response execution
-            # This is critical for the `kwargs = {"model": MAIN_MODEL_ID}` lines below to not throw a 400 Bad Request
-            MAIN_MODEL_ID = main_model_query_id
-            DECISION_MODEL_ID = dec_model_query_id
+            # We don't want to permanently break the globals if the user hits Apply again,
+            # so we only use these local query IDs for the API kwargs
+            active_main_id = main_model_query_id
+            active_dec_id = dec_model_query_id
 
         except Exception as e:
             log_error(f"Failed to fetch model list from LM Studio: {e}")
+            active_main_id = MAIN_MODEL_ID
+            active_dec_id = DECISION_MODEL_ID
 
         # Check if the last message was from the user
         last_user_text = ""
@@ -726,7 +728,7 @@ def _process_llm_response_inner():
                         })
 
                         kwargs_extract = {
-                            "model": DECISION_MODEL_ID,
+                            "model": active_dec_id,
                             "messages": extract_history,
                             "temperature": 0.1 # Low temp for strict JSON
                         }
@@ -827,7 +829,7 @@ def _process_llm_response_inner():
             message_queue.put({"type": "stream_start"})
 
             kwargs = {
-                "model": MAIN_MODEL_ID,
+                "model": active_main_id,
                 "messages": exec_history,
                 "temperature": 0.7,
                 "stream": True
@@ -840,7 +842,7 @@ def _process_llm_response_inner():
             # Stage 2: Normal LLM Chat (No Tool Needed)
             message_queue.put({"type": "stream_start"})
             kwargs = {
-                "model": MAIN_MODEL_ID,
+                "model": active_main_id,
                 "messages": conversation_history,
                 "temperature": 0.7,
                 "stream": True
@@ -1416,19 +1418,21 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # Passing absolute file paths directly to LM Studio CLI `lms load` is completely broken
-                    # in recent versions, returning "Model not found".
-                    # We MUST extract exactly the identifier expected by LM Studio, which is typically: Publisher/Model-Repo
-                    parts = p.replace('\\', '/').split('/')
-                    if len(parts) >= 3:
-                        # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
-                        return f"{parts[-3]}/{parts[-2]}"
-
-                    # If it's already a short name, returning it as is.
+                    # Since we are passing arguments to subprocess.run as a list, Python handles the quoting for us.
+                    # Adding literal quotes (e.g., f'"{p}"') causes file not found errors because the command line sees the quotes as part of the filename.
+                    p = p.replace('\\', '/')
                     return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
                 lms_dec_id = format_lms_path(DECISION_MODEL_ID)
+
+                print_and_log(f"[DEBUG] Checking if Main Model exists at exact path: {lms_main_id}")
+                if not os.path.exists(lms_main_id):
+                     print_and_log(f"[SYSTEM ERROR] Main Model file does NOT exist at path: {lms_main_id}. Check UI settings!")
+
+                print_and_log(f"[DEBUG] Checking if Decision Model exists at exact path: {lms_dec_id}")
+                if not os.path.exists(lms_dec_id):
+                     print_and_log(f"[SYSTEM ERROR] Decision Model file does NOT exist at path: {lms_dec_id}. Check UI settings!")
 
                 print_and_log(f"Loading Main Model: {lms_main_id}")
                 # We do NOT use shell=True on windows because it can mangle paths. We pass the exact list.
@@ -1772,9 +1776,19 @@ def generate_presence_message(event_type):
         try: eel.setNovaState('talking')
         except: pass
 
+        import os
+        main_id_clean = os.path.basename(MAIN_MODEL_ID)
+        query_model_id = MAIN_MODEL_ID
+        try:
+            for m in models.data:
+                if main_id_clean in m.id:
+                    query_model_id = m.id
+                    break
+        except: pass
+
         tools_array = build_tools_array()
         kwargs = {
-            "model": MAIN_MODEL_ID,
+            "model": query_model_id,
             "messages": conversation_history,
             "temperature": 0.8
         }
@@ -1997,22 +2011,25 @@ def start_app():
                         lms_cmd = "lms.cmd"
 
                     def format_lms_path(p):
-                        # LM Studio CLI requires the exact file path to be passed in quotes if not matching cache.
-                        # Because we use `shell=True` on windows to resolve lms.cmd, Python will NOT auto-quote the path
-                        # if we pass it as a single string. It's safer to build a raw string command for `shell=True`.
-                        parts = p.replace('\\', '/').split('/')
-                        if len(parts) >= 3:
-                            # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
-                            return f"{parts[-3]}/{parts[-2]}"
-
-                        # If it's already a short name, returning it as is.
+                        # Since we are passing arguments to subprocess.run as a list, Python handles the quoting for us.
+                        # Adding literal quotes (e.g., f'"{p}"') causes file not found errors because the command line sees the quotes as part of the filename.
+                        p = p.replace('\\', '/')
                         return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
                     lms_dec_id = format_lms_path(DECISION_MODEL_ID)
 
+                    print_and_log(f"[DEBUG] BOOT LOOP - Checking if Main Model exists at exact path: {lms_main_id}")
+                    if not os.path.exists(lms_main_id):
+                         print_and_log(f"[SYSTEM ERROR] BOOT LOOP - Main Model file does NOT exist at path: {lms_main_id}. Check UI settings!")
+
+                    print_and_log(f"[DEBUG] BOOT LOOP - Checking if Decision Model exists at exact path: {lms_dec_id}")
+                    if not os.path.exists(lms_dec_id):
+                         print_and_log(f"[SYSTEM ERROR] BOOT LOOP - Decision Model file does NOT exist at path: {lms_dec_id}. Check UI settings!")
+
                     res_main_code = 0
                     if not main_loaded:
+                        print_and_log(f"[SYSTEM] Auto-loading Main Model: {lms_main_id}")
                         res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags)
                         res_main_code = res_main.returncode
                         if res_main_code != 0:
@@ -2020,6 +2037,7 @@ def start_app():
 
                     res_dec_code = 0
                     if not dec_loaded:
+                        print_and_log(f"[SYSTEM] Auto-loading Decision Model: {lms_dec_id}")
                         res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags)
                         res_dec_code = res_dec.returncode
                         if res_dec_code != 0:
