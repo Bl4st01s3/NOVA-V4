@@ -1071,6 +1071,19 @@ function triggerBootSequence() {
                             clearInterval(window.activeStreamingPollInterval);
                             window.activeStreamingPollInterval = null;
                             window.activeStreamingContentDiv = null;
+
+                            // Unlock input
+                            isProcessing = false;
+                            const inputText = document.getElementById('user-input');
+                            if (inputText) {
+                                inputText.disabled = false;
+                                inputText.focus();
+                            }
+                            const sendBtn = document.getElementById('send-btn');
+                            if (sendBtn) {
+                                sendBtn.disabled = false;
+                            }
+
                             return;
                         }
 
