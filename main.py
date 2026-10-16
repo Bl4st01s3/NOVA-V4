@@ -1416,11 +1416,11 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # LM studio requires Publisher/Model format for lms load, without the .gguf file name
+                    # LM studio requires Publisher/Model/Filename format for lms load, OR the absolute path
+                    # Using the full 3-part identifier (e.g. bartowski/Llama-3/Llama-3.gguf) is the safest method
                     parts = p.replace('\\', '/').split('/')
                     if len(parts) >= 3:
-                        # Extract just Publisher/Model
-                        return f"{parts[-3]}/{parts[-2]}"
+                        return f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
                     return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
@@ -1990,11 +1990,11 @@ def start_app():
                     if os.name == 'nt' and not shutil.which("lms"):
                         lms_cmd = "lms.cmd"
 
-                    # Convert absolute paths to the "Publisher/Model" format LM Studio CLI expects
+                    # Convert absolute paths to the "Publisher/Model/Filename.gguf" format LM Studio CLI expects
                     def format_lms_path(p):
                         parts = p.replace('\\', '/').split('/')
                         if len(parts) >= 3:
-                            return f"{parts[-3]}/{parts[-2]}"
+                            return f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
                         return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
