@@ -1418,21 +1418,29 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # Since we are passing arguments to subprocess.run as a list, Python handles the quoting for us.
-                    # Adding literal quotes (e.g., f'"{p}"') causes file not found errors because the command line sees the quotes as part of the filename.
-                    p = p.replace('\\', '/')
+                    # For `lms load`, passing the absolute file path directly fails in some LM Studio versions
+                    # that strictly expect the `Publisher/Model` string format matching the internal registry.
+                    # We will parse the file path backwards to construct the exact identifier if an absolute path is given.
+                    parts = p.replace('\\', '/').split('/')
+                    if len(parts) >= 3 and p.lower().endswith('.gguf'):
+                        # e.g., C:/.../Publisher/Model/file.gguf -> Publisher/Model
+                        return f"{parts[-3]}/{parts[-2]}"
                     return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
                 lms_dec_id = format_lms_path(DECISION_MODEL_ID)
 
-                print_and_log(f"[DEBUG] Checking if Main Model exists at exact path: {lms_main_id}")
-                if not os.path.exists(lms_main_id):
-                     print_and_log(f"[SYSTEM ERROR] Main Model file does NOT exist at path: {lms_main_id}. Check UI settings!")
+                print_and_log(f"[DEBUG] Checking if Main Model exists at exact path: {MAIN_MODEL_ID}")
+                if not os.path.exists(MAIN_MODEL_ID):
+                     print_and_log(f"[SYSTEM ERROR] Main Model file does NOT exist at path: {MAIN_MODEL_ID}. Check UI settings!")
+                else:
+                     print_and_log(f"[DEBUG] Main Model confirmed on disk at: {MAIN_MODEL_ID}")
 
-                print_and_log(f"[DEBUG] Checking if Decision Model exists at exact path: {lms_dec_id}")
-                if not os.path.exists(lms_dec_id):
-                     print_and_log(f"[SYSTEM ERROR] Decision Model file does NOT exist at path: {lms_dec_id}. Check UI settings!")
+                print_and_log(f"[DEBUG] Checking if Decision Model exists at exact path: {DECISION_MODEL_ID}")
+                if not os.path.exists(DECISION_MODEL_ID):
+                     print_and_log(f"[SYSTEM ERROR] Decision Model file does NOT exist at path: {DECISION_MODEL_ID}. Check UI settings!")
+                else:
+                     print_and_log(f"[DEBUG] Decision Model confirmed on disk at: {DECISION_MODEL_ID}")
 
                 print_and_log(f"Loading Main Model: {lms_main_id}")
                 # We do NOT use shell=True on windows because it can mangle paths. We pass the exact list.
@@ -2011,21 +2019,31 @@ def start_app():
                         lms_cmd = "lms.cmd"
 
                     def format_lms_path(p):
-                        # Since we are passing arguments to subprocess.run as a list, Python handles the quoting for us.
-                        # Adding literal quotes (e.g., f'"{p}"') causes file not found errors because the command line sees the quotes as part of the filename.
-                        p = p.replace('\\', '/')
+                        # For `lms load`, passing the absolute file path directly fails in some LM Studio versions
+                        # that strictly expect the `Publisher/Model` string format matching the internal registry.
+                        # We will parse the file path backwards to construct the exact identifier if an absolute path is given.
+                        parts = p.replace('\\', '/').split('/')
+                        if len(parts) >= 3 and p.lower().endswith('.gguf'):
+                            # e.g., C:/.../Publisher/Model/file.gguf -> Publisher/Model
+                            return f"{parts[-3]}/{parts[-2]}"
                         return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
                     lms_dec_id = format_lms_path(DECISION_MODEL_ID)
 
-                    print_and_log(f"[DEBUG] BOOT LOOP - Checking if Main Model exists at exact path: {lms_main_id}")
-                    if not os.path.exists(lms_main_id):
-                         print_and_log(f"[SYSTEM ERROR] BOOT LOOP - Main Model file does NOT exist at path: {lms_main_id}. Check UI settings!")
+                    if not main_loaded:
+                        print_and_log(f"[DEBUG] BOOT LOOP - Checking if Main Model exists at exact path: {MAIN_MODEL_ID}")
+                        if not os.path.exists(MAIN_MODEL_ID):
+                             print_and_log(f"[SYSTEM ERROR] BOOT LOOP - Main Model file does NOT exist at path: {MAIN_MODEL_ID}. Check UI settings!")
+                        else:
+                             print_and_log(f"[DEBUG] BOOT LOOP - Main Model confirmed on disk at: {MAIN_MODEL_ID}")
 
-                    print_and_log(f"[DEBUG] BOOT LOOP - Checking if Decision Model exists at exact path: {lms_dec_id}")
-                    if not os.path.exists(lms_dec_id):
-                         print_and_log(f"[SYSTEM ERROR] BOOT LOOP - Decision Model file does NOT exist at path: {lms_dec_id}. Check UI settings!")
+                    if not dec_loaded:
+                        print_and_log(f"[DEBUG] BOOT LOOP - Checking if Decision Model exists at exact path: {DECISION_MODEL_ID}")
+                        if not os.path.exists(DECISION_MODEL_ID):
+                             print_and_log(f"[SYSTEM ERROR] BOOT LOOP - Decision Model file does NOT exist at path: {DECISION_MODEL_ID}. Check UI settings!")
+                        else:
+                             print_and_log(f"[DEBUG] BOOT LOOP - Decision Model confirmed on disk at: {DECISION_MODEL_ID}")
 
                     res_main_code = 0
                     if not main_loaded:
