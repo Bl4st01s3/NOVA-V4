@@ -563,16 +563,49 @@ def _process_llm_response_inner():
         log_error(f"Could not update OBS state (is OBS overlay open?): {e}")
 
     try:
-        # Check if models are loaded (but we ignore the active ID and strictly use our dual LLMs)
+        # Check if models are loaded
         try:
             models = client.models.list()
-            if not models.data:
-                error_msg = "System Error: No models are currently loaded in the Bionic Engine. Please ensure both models are loaded."
+            loaded_model_ids = [m.id for m in models.data]
+
+            import os
+
+            # The OpenAI API specifically expects the model parameter to match the ID exactly as registered by the engine.
+            # To handle raw file paths being fed into inference logic, we must extract the filename locally here before passing it to completions.
+            global MAIN_MODEL_ID, DECISION_MODEL_ID
+            main_model_query_id = MAIN_MODEL_ID
+            dec_model_query_id = DECISION_MODEL_ID
+
+            # If the IDs are raw filepaths (e.g. C:\models\liquid.gguf), extract the basename for inference.
+            # We do a fuzzy check against the loaded_model_ids because LM Studio sometimes prepends publisher strings (e.g. Publisher/Model/liquid.gguf).
+            # We iterate through loaded_model_ids and if we find a match containing our basename, we override the query ID with the exact registered ID.
+            main_id_clean = os.path.basename(MAIN_MODEL_ID)
+            dec_id_clean = os.path.basename(DECISION_MODEL_ID)
+
+            main_loaded = False
+            dec_loaded = False
+
+            for m_id in loaded_model_ids:
+                if main_id_clean in m_id:
+                    main_loaded = True
+                    main_model_query_id = m_id
+                if dec_id_clean in m_id:
+                    dec_loaded = True
+                    dec_model_query_id = m_id
+
+            if not main_loaded or not dec_loaded:
+                error_msg = "System Error: One or more required models are not loaded in the Bionic Engine. Please check your AI Engine Configuration settings."
                 message_queue.put({"type": "full_message", "text": error_msg})
                 message_queue.put({"type": "stream_end"})
                 try: eel.setNovaState('error')
                 except: pass
                 return "ERROR_NO_MODEL"
+
+            # Temporarily override the globals with the EXACT matched IDs for the duration of this specific response execution
+            # This is critical for the `kwargs = {"model": MAIN_MODEL_ID}` lines below to not throw a 400 Bad Request
+            MAIN_MODEL_ID = main_model_query_id
+            DECISION_MODEL_ID = dec_model_query_id
+
         except Exception as e:
             log_error(f"Failed to fetch model list from LM Studio: {e}")
 
@@ -1358,8 +1391,14 @@ def save_models_config(config):
             json.dump(config, f, indent=4)
 
         # Update globals
+        # Note: the user selects file paths (e.g. C:\models\liquid.gguf)
+        # But the OpenAI API specifically expects the model ID to be the bare filename, or Publisher/Model/file.gguf
+        # We will parse the file path to just use the raw filename for the model ID parameter during inference
+        import os
         MAIN_MODEL_ID = config.get("main_model", MAIN_MODEL_ID)
         DECISION_MODEL_ID = config.get("decision_model", DECISION_MODEL_ID)
+
+        # When saving config, don't break the original globals if parsing fails
         print_and_log(f"Models configured updated. Main: {MAIN_MODEL_ID}, Decision: {DECISION_MODEL_ID}")
 
         # Immediately trigger background load for the new models using lms CLI
@@ -1370,14 +1409,26 @@ def save_models_config(config):
                 if os.path.exists("models_config.json") and os.name == 'nt':
                     creationflags = subprocess.CREATE_NO_WINDOW
 
+                import shutil
+                lms_cmd = "lms"
+                if os.name == 'nt' and not shutil.which("lms"):
+                    lms_cmd = "lms.cmd"
+
                 print_and_log(f"Loading Main Model: {MAIN_MODEL_ID}")
-                subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
+                res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                if res_main.returncode != 0:
+                    log_error(f"Failed to load Main Model {MAIN_MODEL_ID} via lms CLI.")
 
                 print_and_log(f"Loading Decision Model: {DECISION_MODEL_ID}")
-                subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
+                res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                if res_dec.returncode != 0:
+                    log_error(f"Failed to load Decision Model {DECISION_MODEL_ID} via lms CLI.")
 
-                print_and_log("Successfully hot-reloaded models into Bionic Engine.")
-                eel.pushAIMessage("Models successfully loaded and ready.")()
+                if res_main.returncode == 0 and res_dec.returncode == 0:
+                    print_and_log("Successfully hot-reloaded models into Bionic Engine.")
+                    eel.pushAIMessage("Models successfully loaded and ready.")()
+                else:
+                    eel.pushAIMessage("Failed to load models into Bionic Engine. Check logs.")()
             except Exception as e:
                 log_error(f"Failed to hot-reload one or more models: {e}")
                 eel.pushAIMessage("Failed to load models into Bionic Engine. Check logs.")()
@@ -1894,8 +1945,15 @@ def start_app():
             models = client.models.list()
             loaded_model_ids = [m.id for m in models.data]
 
+            import os
+            main_id_clean = os.path.basename(MAIN_MODEL_ID)
+            dec_id_clean = os.path.basename(DECISION_MODEL_ID)
+
+            main_loaded = any(main_id_clean in m_id for m_id in loaded_model_ids)
+            dec_loaded = any(dec_id_clean in m_id for m_id in loaded_model_ids)
+
             # Check if both required models are already loaded
-            if MAIN_MODEL_ID in loaded_model_ids and DECISION_MODEL_ID in loaded_model_ids:
+            if main_loaded and dec_loaded:
                 try: eel.setSystemStatus('online', 'Bionic Engine Online')
                 except: pass
                 print_and_log("[SYSTEM] Bionic Engine Online. Both models are loaded. Triggering boot sequence.")
@@ -1913,18 +1971,42 @@ def start_app():
                     creationflags = subprocess.CREATE_NO_WINDOW
 
                 try:
-                    if MAIN_MODEL_ID not in loaded_model_ids:
-                        subprocess.run(["lms", "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags)
-                    if DECISION_MODEL_ID not in loaded_model_ids:
-                        subprocess.run(["lms", "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags)
+                    import shutil
+                    lms_cmd = "lms"
+                    # Windows subprocess sometimes needs shell=True to resolve global npm commands like 'lms' if they aren't explicitly passed as .cmd
+                    # A safer cross-platform way is to let shutil find it, or fallback to shell
+                    if os.name == 'nt' and not shutil.which("lms"):
+                        lms_cmd = "lms.cmd"
 
-                    print_and_log("[SYSTEM] Models successfully auto-loaded. Triggering boot sequence.")
-                    try: eel.setSystemStatus('online', 'Bionic Engine Online')
-                    except: pass
-                    try: eel.triggerBootSequence()
-                    except: pass
+                    res_main_code = 0
+                    if not main_loaded:
+                        res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                        res_main_code = res_main.returncode
+                        if res_main_code != 0:
+                            print_and_log(f"[SYSTEM] Failed to load Main Model: {MAIN_MODEL_ID}")
+
+                    res_dec_code = 0
+                    if not dec_loaded:
+                        res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                        res_dec_code = res_dec.returncode
+                        if res_dec_code != 0:
+                            print_and_log(f"[SYSTEM] Failed to load Decision Model: {DECISION_MODEL_ID}")
+
+                    if res_main_code == 0 and res_dec_code == 0:
+                        print_and_log("[SYSTEM] Models successfully auto-loaded. Waiting for VRAM initialization...")
+                        # Give LM Studio a few seconds to actually finish moving weights into GPU memory before querying
+                        time.sleep(5)
+                        print_and_log("[SYSTEM] Triggering boot sequence.")
+                        try: eel.setSystemStatus('online', 'Bionic Engine Online')
+                        except: pass
+                        try: eel.triggerBootSequence()
+                        except: pass
+                    else:
+                        print_and_log("[SYSTEM] Failed to auto-load one or more models.")
+                        try: eel.setSystemStatus('error', 'Failed to Load Models')
+                        except: pass
                 except Exception as ex:
-                    print_and_log(f"[SYSTEM] Failed to auto-load models: {ex}")
+                    print_and_log(f"[SYSTEM] Failed to execute auto-load commands: {ex}")
                     try: eel.setSystemStatus('error', 'Failed to Load Models')
                     except: pass
         except Exception as e:
