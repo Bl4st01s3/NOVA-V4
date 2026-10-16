@@ -91,10 +91,16 @@ document.addEventListener("DOMContentLoaded", () => {
                                         window.activeStreamingContentDiv = createEmptyMessageBubble('assistant');
                                     }
 
-                                    const textNode = document.createTextNode(msg.text);
-                                    window.activeStreamingContentDiv.appendChild(textNode);
                                     if (msg.text.includes('\n')) {
-                                        window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                                        const lines = msg.text.split('\n');
+                                        for (let i = 0; i < lines.length; i++) {
+                                            window.activeStreamingContentDiv.appendChild(document.createTextNode(lines[i]));
+                                            if (i < lines.length - 1) {
+                                                window.activeStreamingContentDiv.appendChild(document.createElement('br'));
+                                            }
+                                        }
+                                    } else {
+                                        window.activeStreamingContentDiv.appendChild(document.createTextNode(msg.text));
                                     }
                                     window.scrollToBottom();
                                 } else if (msg.type === 'full_message') {
@@ -935,9 +941,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // Helper functions for Chat
     function appendMessage(sender, text) {
         const content = createEmptyMessageBubble(sender);
-        const textNode = document.createTextNode(text);
-        content.appendChild(textNode);
-        content.innerHTML = content.innerHTML.replace(/\n/g, '<br>');
+        if (text.includes('\n')) {
+            const lines = text.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                content.appendChild(document.createTextNode(lines[i]));
+                if (i < lines.length - 1) {
+                    content.appendChild(document.createElement('br'));
+                }
+            }
+        } else {
+            content.appendChild(document.createTextNode(text));
+        }
         window.scrollToBottom();
     }
 
@@ -967,13 +981,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // Exposed streaming handler
     window.streamAIToken = function(token) {
         if (window.activeStreamingContentDiv) {
-            // Append safely keeping line breaks
-            const textNode = document.createTextNode(token);
-            window.activeStreamingContentDiv.appendChild(textNode);
-            // We periodically update innerHTML to parse newlines into <br>
-            // but doing it every token is expensive. Playwright check will verify if we need it.
             if (token.includes('\n')) {
-                window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                const lines = token.split('\n');
+                for (let i = 0; i < lines.length; i++) {
+                    window.activeStreamingContentDiv.appendChild(document.createTextNode(lines[i]));
+                    if (i < lines.length - 1) {
+                        window.activeStreamingContentDiv.appendChild(document.createElement('br'));
+                    }
+                }
+            } else {
+                window.activeStreamingContentDiv.appendChild(document.createTextNode(token));
             }
             window.scrollToBottom();
         }
@@ -1073,10 +1090,16 @@ function triggerBootSequence() {
                         }
 
                         if (msg.type === 'stream_chunk') {
-                            const textNode = document.createTextNode(msg.text);
-                            window.activeStreamingContentDiv.appendChild(textNode);
                             if (msg.text.includes('\n')) {
-                                window.activeStreamingContentDiv.innerHTML = window.activeStreamingContentDiv.innerHTML.replace(/\n/g, '<br>');
+                                const lines = msg.text.split('\n');
+                                for (let i = 0; i < lines.length; i++) {
+                                    window.activeStreamingContentDiv.appendChild(document.createTextNode(lines[i]));
+                                    if (i < lines.length - 1) {
+                                        window.activeStreamingContentDiv.appendChild(document.createElement('br'));
+                                    }
+                                }
+                            } else {
+                                window.activeStreamingContentDiv.appendChild(document.createTextNode(msg.text));
                             }
                             window.scrollToBottom();
                         }
@@ -1110,9 +1133,17 @@ function pushAIMessage(text) {
     const content = document.createElement('div');
     content.classList.add('message-content');
 
-    const textNode = document.createTextNode(text);
-    content.appendChild(textNode);
-    content.innerHTML = content.innerHTML.replace(/\n/g, '<br>');
+    if (text.includes('\n')) {
+        const lines = text.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            content.appendChild(document.createTextNode(lines[i]));
+            if (i < lines.length - 1) {
+                content.appendChild(document.createElement('br'));
+            }
+        }
+    } else {
+        content.appendChild(document.createTextNode(text));
+    }
 
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(content);
