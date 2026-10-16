@@ -883,7 +883,7 @@ def _process_llm_response_inner():
                     clean_start = re.sub(r'^([a-z])\s+(?=[a-zA-Z])', '', clean_start)
 
                     # Also strip non-A/I uppercase letters
-                    clean_start = re.sub(r'^([B-HJ-ZB-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
+                    clean_start = re.sub(r'^([B-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
 
                     clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
 
@@ -1416,12 +1416,12 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # LM studio requires Publisher/Model/Filename format for lms load, OR the absolute path
-                    # Using the full 3-part identifier (e.g. bartowski/Llama-3/Llama-3.gguf) is the safest method
-                    parts = p.replace('\\', '/').split('/')
-                    if len(parts) >= 3:
-                        return f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
-                    return p
+                    # LM Studio's CLI `lms load` strictly requires the `Publisher/Model` path format
+                    # OR just the explicit `filename.gguf` identifier depending on version and cache state.
+                    # Because absolute paths and 3-part identifiers fail, we fallback to just the basename
+                    # which lms load can fuzzy-match.
+                    import os
+                    return os.path.basename(p.replace('\\', '/'))
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
                 lms_dec_id = format_lms_path(DECISION_MODEL_ID)
@@ -1990,12 +1990,13 @@ def start_app():
                     if os.name == 'nt' and not shutil.which("lms"):
                         lms_cmd = "lms.cmd"
 
-                    # Convert absolute paths to the "Publisher/Model/Filename.gguf" format LM Studio CLI expects
                     def format_lms_path(p):
-                        parts = p.replace('\\', '/').split('/')
-                        if len(parts) >= 3:
-                            return f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
-                        return p
+                        # LM Studio's CLI `lms load` strictly requires the `Publisher/Model` path format
+                        # OR just the explicit `filename.gguf` identifier depending on version and cache state.
+                        # Because absolute paths and 3-part identifiers fail, we fallback to just the basename
+                        # which lms load can fuzzy-match.
+                        import os
+                        return os.path.basename(p.replace('\\', '/'))
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
                     lms_dec_id = format_lms_path(DECISION_MODEL_ID)
