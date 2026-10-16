@@ -1416,8 +1416,12 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
+                    # LM studio requires Publisher/Model format for lms load, without the .gguf file name
                     parts = p.replace('\\', '/').split('/')
-                    return '/'.join(parts[-3:]) if len(parts) >= 3 else p
+                    if len(parts) >= 3:
+                        # Extract just Publisher/Model
+                        return f"{parts[-3]}/{parts[-2]}"
+                    return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
                 lms_dec_id = format_lms_path(DECISION_MODEL_ID)
@@ -1986,10 +1990,12 @@ def start_app():
                     if os.name == 'nt' and not shutil.which("lms"):
                         lms_cmd = "lms.cmd"
 
-                    # Convert absolute paths to the "Publisher/Model/file.gguf" format LM Studio CLI expects
+                    # Convert absolute paths to the "Publisher/Model" format LM Studio CLI expects
                     def format_lms_path(p):
                         parts = p.replace('\\', '/').split('/')
-                        return '/'.join(parts[-3:]) if len(parts) >= 3 else p
+                        if len(parts) >= 3:
+                            return f"{parts[-3]}/{parts[-2]}"
+                        return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
                     lms_dec_id = format_lms_path(DECISION_MODEL_ID)
