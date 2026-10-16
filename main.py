@@ -44,7 +44,8 @@ def load_models_config():
                 MAIN_MODEL_ID = config.get("main_model", MAIN_MODEL_ID)
                 DECISION_MODEL_ID = config.get("decision_model", DECISION_MODEL_ID)
         except Exception as e:
-            logging.error(f"Failed to load models config: {e}")
+            # Cannot use log_error yet, as logging is not configured
+            print(f"Failed to load models config: {e}")
 
 load_models_config()
 
@@ -1414,15 +1415,22 @@ def save_models_config(config):
                 if os.name == 'nt' and not shutil.which("lms"):
                     lms_cmd = "lms.cmd"
 
-                print_and_log(f"Loading Main Model: {MAIN_MODEL_ID}")
-                res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
-                if res_main.returncode != 0:
-                    log_error(f"Failed to load Main Model {MAIN_MODEL_ID} via lms CLI.")
+                def format_lms_path(p):
+                    parts = p.replace('\\', '/').split('/')
+                    return '/'.join(parts[-3:]) if len(parts) >= 3 else p
 
-                print_and_log(f"Loading Decision Model: {DECISION_MODEL_ID}")
-                res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                lms_main_id = format_lms_path(MAIN_MODEL_ID)
+                lms_dec_id = format_lms_path(DECISION_MODEL_ID)
+
+                print_and_log(f"Loading Main Model: {lms_main_id}")
+                res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=(os.name == 'nt'))
+                if res_main.returncode != 0:
+                    log_error(f"Failed to load Main Model {lms_main_id} via lms CLI. Error: {res_main.stderr.strip()}")
+
+                print_and_log(f"Loading Decision Model: {lms_dec_id}")
+                res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=(os.name == 'nt'))
                 if res_dec.returncode != 0:
-                    log_error(f"Failed to load Decision Model {DECISION_MODEL_ID} via lms CLI.")
+                    log_error(f"Failed to load Decision Model {lms_dec_id} via lms CLI. Error: {res_dec.stderr.strip()}")
 
                 if res_main.returncode == 0 and res_dec.returncode == 0:
                     print_and_log("Successfully hot-reloaded models into Bionic Engine.")
@@ -1978,19 +1986,27 @@ def start_app():
                     if os.name == 'nt' and not shutil.which("lms"):
                         lms_cmd = "lms.cmd"
 
+                    # Convert absolute paths to the "Publisher/Model/file.gguf" format LM Studio CLI expects
+                    def format_lms_path(p):
+                        parts = p.replace('\\', '/').split('/')
+                        return '/'.join(parts[-3:]) if len(parts) >= 3 else p
+
+                    lms_main_id = format_lms_path(MAIN_MODEL_ID)
+                    lms_dec_id = format_lms_path(DECISION_MODEL_ID)
+
                     res_main_code = 0
                     if not main_loaded:
-                        res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", MAIN_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                        res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=(os.name == 'nt'))
                         res_main_code = res_main.returncode
                         if res_main_code != 0:
-                            print_and_log(f"[SYSTEM] Failed to load Main Model: {MAIN_MODEL_ID}")
+                            print_and_log(f"[SYSTEM] Failed to load Main Model ({lms_main_id}). Error: {res_main.stderr.strip()}")
 
                     res_dec_code = 0
                     if not dec_loaded:
-                        res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", DECISION_MODEL_ID, "--yes"], creationflags=creationflags, shell=(os.name == 'nt'))
+                        res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=(os.name == 'nt'))
                         res_dec_code = res_dec.returncode
                         if res_dec_code != 0:
-                            print_and_log(f"[SYSTEM] Failed to load Decision Model: {DECISION_MODEL_ID}")
+                            print_and_log(f"[SYSTEM] Failed to load Decision Model ({lms_dec_id}). Error: {res_dec.stderr.strip()}")
 
                     if res_main_code == 0 and res_dec_code == 0:
                         print_and_log("[SYSTEM] Models successfully auto-loaded. Waiting for VRAM initialization...")
