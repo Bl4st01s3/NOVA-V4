@@ -1416,24 +1416,29 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # For subprocess on windows, using shell=True and a list requires us NOT to manually quote the arguments.
-                    # list2cmdline will do the quoting for us. But we do need to normalize the path for safety.
-                    # We will try passing the full Publisher/Model/Filename structure as LM studio expects it.
+                    # Passing absolute file paths directly to LM Studio CLI `lms load` is completely broken
+                    # in recent versions, returning "Model not found".
+                    # We MUST extract exactly the identifier expected by LM Studio, which is typically: Publisher/Model-Repo
                     parts = p.replace('\\', '/').split('/')
                     if len(parts) >= 3:
-                        return f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
+                        # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
+                        return f"{parts[-3]}/{parts[-2]}"
+
+                    # If it's already a short name, returning it as is.
                     return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
                 lms_dec_id = format_lms_path(DECISION_MODEL_ID)
 
                 print_and_log(f"Loading Main Model: {lms_main_id}")
-                res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=False)
+                # We do NOT use shell=True on windows because it can mangle paths. We pass the exact list.
+                # However we must use lms.cmd to bypass the lack of shell
+                res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags)
                 if res_main.returncode != 0:
                     log_error(f"Failed to load Main Model {lms_main_id} via lms CLI. Error: {res_main.stderr.strip()}")
 
                 print_and_log(f"Loading Decision Model: {lms_dec_id}")
-                res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=False)
+                res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags)
                 if res_dec.returncode != 0:
                     log_error(f"Failed to load Decision Model {lms_dec_id} via lms CLI. Error: {res_dec.stderr.strip()}")
 
@@ -1992,12 +1997,15 @@ def start_app():
                         lms_cmd = "lms.cmd"
 
                     def format_lms_path(p):
-                        # For subprocess on windows, using shell=True and a list requires us NOT to manually quote the arguments.
-                        # list2cmdline will do the quoting for us. But we do need to normalize the path for safety.
-                        # We will try passing the full Publisher/Model/Filename structure as LM studio expects it.
+                        # LM Studio CLI requires the exact file path to be passed in quotes if not matching cache.
+                        # Because we use `shell=True` on windows to resolve lms.cmd, Python will NOT auto-quote the path
+                        # if we pass it as a single string. It's safer to build a raw string command for `shell=True`.
                         parts = p.replace('\\', '/').split('/')
                         if len(parts) >= 3:
-                            return f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
+                            # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
+                            return f"{parts[-3]}/{parts[-2]}"
+
+                        # If it's already a short name, returning it as is.
                         return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
@@ -2005,14 +2013,14 @@ def start_app():
 
                     res_main_code = 0
                     if not main_loaded:
-                        res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=False)
+                        res_main = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_main_id, "--yes"], capture_output=True, text=True, creationflags=creationflags)
                         res_main_code = res_main.returncode
                         if res_main_code != 0:
                             print_and_log(f"[SYSTEM] Failed to load Main Model ({lms_main_id}). Error: {res_main.stderr.strip()}")
 
                     res_dec_code = 0
                     if not dec_loaded:
-                        res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags, shell=False)
+                        res_dec = subprocess.run([lms_cmd, "load", "--gpu", "max", lms_dec_id, "--yes"], capture_output=True, text=True, creationflags=creationflags)
                         res_dec_code = res_dec.returncode
                         if res_dec_code != 0:
                             print_and_log(f"[SYSTEM] Failed to load Decision Model ({lms_dec_id}). Error: {res_dec.stderr.strip()}")
