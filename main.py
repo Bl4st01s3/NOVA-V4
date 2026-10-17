@@ -1418,11 +1418,15 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # The LM Studio `lms load` CLI accepts absolute paths.
-                    # On Windows, we must ensure we use native backslashes, otherwise it will fail to find the file.
-                    import os
-                    if os.name == 'nt':
-                        return p.replace('/', '\\')
+                    # Passing absolute file paths directly to LM Studio CLI `lms load` is completely broken
+                    # in recent versions, returning "Model not found".
+                    # We MUST extract exactly the identifier expected by LM Studio, which is typically: Publisher/Model-Repo
+                    parts = p.replace('\\', '/').split('/')
+                    if len(parts) >= 3:
+                        # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
+                        return f"{parts[-3]}/{parts[-2]}"
+
+                    # If it's already a short name, returning it as is.
                     return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
@@ -2017,11 +2021,15 @@ def start_app():
                         lms_cmd = "lms.cmd"
 
                     def format_lms_path(p):
-                        # The LM Studio `lms load` CLI accepts absolute paths.
-                        # On Windows, we must ensure we use native backslashes, otherwise it will fail to find the file.
-                        import os
-                        if os.name == 'nt':
-                            return p.replace('/', '\\')
+                        # Passing absolute file paths directly to LM Studio CLI `lms load` is completely broken
+                        # in recent versions, returning "Model not found".
+                        # We MUST extract exactly the identifier expected by LM Studio, which is typically: Publisher/Model-Repo
+                        parts = p.replace('\\', '/').split('/')
+                        if len(parts) >= 3:
+                            # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
+                            return f"{parts[-3]}/{parts[-2]}"
+
+                        # If it's already a short name, returning it as is.
                         return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
