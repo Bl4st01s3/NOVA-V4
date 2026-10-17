@@ -570,18 +570,32 @@ def _process_llm_response_inner():
             loaded_model_ids = [m.id for m in models.data]
 
             import os
-
-            # The OpenAI API specifically expects the model parameter to match the ID exactly as registered by the engine.
-            # To handle raw file paths being fed into inference logic, we must extract the filename locally here before passing it to completions.
+            import subprocess
             global MAIN_MODEL_ID, DECISION_MODEL_ID
             main_model_query_id = MAIN_MODEL_ID
             dec_model_query_id = DECISION_MODEL_ID
 
-            # If the IDs are raw filepaths (e.g. C:\models\liquid.gguf), extract the basename for inference.
-            # We do a fuzzy check against the loaded_model_ids because LM Studio sometimes prepends publisher strings (e.g. Publisher/Model/liquid.gguf).
-            # We iterate through loaded_model_ids and if we find a match containing our basename, we override the query ID with the exact registered ID.
-            main_id_clean = os.path.basename(MAIN_MODEL_ID)
-            dec_id_clean = os.path.basename(DECISION_MODEL_ID)
+            def format_lms_path_inference(p):
+                lms_cmd = "lms"
+                if os.name == 'nt' and not __import__('shutil').which("lms"):
+                    lms_cmd = "lms.cmd"
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                try:
+                    res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
+                    if res.returncode == 0:
+                        import json
+                        models = json.loads(res.stdout)
+                        normalized_p = p.replace('\\', '/')
+                        for model in models:
+                            if model.get('path') and model['path'] in normalized_p:
+                                return model.get('modelKey', p)
+                except Exception as e:
+                    print_and_log(f"[DEBUG] Failed to parse lms ls --json: {e}")
+                return os.path.basename(p)
+
+            # We query the CLI dynamically or fallback to basename to properly match the exact `id` returned by API
+            main_id_clean = format_lms_path_inference(MAIN_MODEL_ID)
+            dec_id_clean = format_lms_path_inference(DECISION_MODEL_ID)
 
             main_loaded = False
             dec_loaded = False
@@ -1418,15 +1432,18 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # Passing absolute file paths directly to LM Studio CLI `lms load` is completely broken
-                    # in recent versions, returning "Model not found".
-                    # We MUST extract exactly the identifier expected by LM Studio, which is typically: Publisher/Model-Repo
-                    parts = p.replace('\\', '/').split('/')
-                    if len(parts) >= 3:
-                        # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
-                        return f"{parts[-3]}/{parts[-2]}"
+                    try:
+                        res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
+                        if res.returncode == 0:
+                            import json
+                            models = json.loads(res.stdout)
+                            normalized_p = p.replace('\\', '/')
+                            for model in models:
+                                if model.get('path') and model['path'] in normalized_p:
+                                    return model.get('modelKey', p)
+                    except Exception as e:
+                        print_and_log(f"[DEBUG] Failed to parse lms ls --json: {e}")
 
-                    # If it's already a short name, returning it as is.
                     return p
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
@@ -1787,7 +1804,26 @@ def generate_presence_message(event_type):
         except: pass
 
         import os
-        main_id_clean = os.path.basename(MAIN_MODEL_ID)
+        import subprocess
+        def format_lms_path_presence(p):
+            lms_cmd = "lms"
+            if os.name == 'nt' and not __import__('shutil').which("lms"):
+                lms_cmd = "lms.cmd"
+            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            try:
+                res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
+                if res.returncode == 0:
+                    import json
+                    models = json.loads(res.stdout)
+                    normalized_p = p.replace('\\', '/')
+                    for model in models:
+                        if model.get('path') and model['path'] in normalized_p:
+                            return model.get('modelKey', p)
+            except Exception:
+                pass
+            return os.path.basename(p)
+
+        main_id_clean = format_lms_path_presence(MAIN_MODEL_ID)
         query_model_id = MAIN_MODEL_ID
         try:
             for m in models.data:
@@ -1988,8 +2024,27 @@ def start_app():
             loaded_model_ids = [m.id for m in models.data]
 
             import os
-            main_id_clean = os.path.basename(MAIN_MODEL_ID)
-            dec_id_clean = os.path.basename(DECISION_MODEL_ID)
+            import subprocess
+            def format_lms_path_loop(p):
+                lms_cmd = "lms"
+                if os.name == 'nt' and not __import__('shutil').which("lms"):
+                    lms_cmd = "lms.cmd"
+                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                try:
+                    res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
+                    if res.returncode == 0:
+                        import json
+                        models = json.loads(res.stdout)
+                        normalized_p = p.replace('\\', '/')
+                        for model in models:
+                            if model.get('path') and model['path'] in normalized_p:
+                                return model.get('modelKey', p)
+                except Exception:
+                    pass
+                return os.path.basename(p)
+
+            main_id_clean = format_lms_path_loop(MAIN_MODEL_ID)
+            dec_id_clean = format_lms_path_loop(DECISION_MODEL_ID)
 
             main_loaded = any(main_id_clean in m_id for m_id in loaded_model_ids)
             dec_loaded = any(dec_id_clean in m_id for m_id in loaded_model_ids)
@@ -2021,15 +2076,18 @@ def start_app():
                         lms_cmd = "lms.cmd"
 
                     def format_lms_path(p):
-                        # Passing absolute file paths directly to LM Studio CLI `lms load` is completely broken
-                        # in recent versions, returning "Model not found".
-                        # We MUST extract exactly the identifier expected by LM Studio, which is typically: Publisher/Model-Repo
-                        parts = p.replace('\\', '/').split('/')
-                        if len(parts) >= 3:
-                            # Extract e.g. "bartowski/Llama-3.2-3B-Instruct-GGUF"
-                            return f"{parts[-3]}/{parts[-2]}"
+                        try:
+                            res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
+                            if res.returncode == 0:
+                                import json
+                                models = json.loads(res.stdout)
+                                normalized_p = p.replace('\\', '/')
+                                for model in models:
+                                    if model.get('path') and model['path'] in normalized_p:
+                                        return model.get('modelKey', p)
+                        except Exception as e:
+                            print_and_log(f"[DEBUG] Failed to parse lms ls --json: {e}")
 
-                        # If it's already a short name, returning it as is.
                         return p
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
