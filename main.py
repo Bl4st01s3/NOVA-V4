@@ -78,6 +78,31 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+def extract_model_key_from_path(p):
+    """
+    Given a local file path (e.g. C:/.../model.gguf), query the LM Studio CLI
+    to get the exact `modelKey` identifier expected for auto-loading and API matching.
+    """
+    import os
+    import subprocess
+    import json
+
+    lms_cmd = "lms"
+    if os.name == 'nt' and not __import__('shutil').which("lms"):
+        lms_cmd = "lms.cmd"
+    creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+    try:
+        res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
+        if res.returncode == 0:
+            models = json.loads(res.stdout)
+            normalized_p = p.replace('\\', '/')
+            for model in models:
+                if model.get('path') and model['path'] in normalized_p:
+                    return model.get('modelKey', p)
+    except Exception as e:
+        pass
+    return os.path.basename(p)
+
 def safe_add_activity_log(log_type, message):
     """Safely pushes an activity log to the frontend and saves it to disk."""
     try:
@@ -575,27 +600,9 @@ def _process_llm_response_inner():
             main_model_query_id = MAIN_MODEL_ID
             dec_model_query_id = DECISION_MODEL_ID
 
-            def format_lms_path_inference(p):
-                lms_cmd = "lms"
-                if os.name == 'nt' and not __import__('shutil').which("lms"):
-                    lms_cmd = "lms.cmd"
-                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                try:
-                    res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
-                    if res.returncode == 0:
-                        import json
-                        models = json.loads(res.stdout)
-                        normalized_p = p.replace('\\', '/')
-                        for model in models:
-                            if model.get('path') and model['path'] in normalized_p:
-                                return model.get('modelKey', p)
-                except Exception as e:
-                    print_and_log(f"[DEBUG] Failed to parse lms ls --json: {e}")
-                return os.path.basename(p)
-
             # We query the CLI dynamically or fallback to basename to properly match the exact `id` returned by API
-            main_id_clean = format_lms_path_inference(MAIN_MODEL_ID)
-            dec_id_clean = format_lms_path_inference(DECISION_MODEL_ID)
+            main_id_clean = extract_model_key_from_path(MAIN_MODEL_ID)
+            dec_id_clean = extract_model_key_from_path(DECISION_MODEL_ID)
 
             main_loaded = False
             dec_loaded = False
@@ -883,7 +890,7 @@ def _process_llm_response_inner():
                     startup_buffer += token
 
                     # Wait until we have enough characters to see what's really happening
-                    if len(startup_buffer.strip()) < 3:
+                    if len(startup_buffer.strip()) < 5:
                         continue
 
                     # Clean the buffer by explicitly stripping standalone single letters
@@ -892,14 +899,15 @@ def _process_llm_response_inner():
                     clean_start = startup_buffer.lstrip(' \n\r\t".,!?;:-')
                     # Strip ANY single letter followed by newline/punctuation at the start of generation
                     clean_start = re.sub(r'^([a-zA-Z])\s*[\n\r]+\s*', '', clean_start)
-                    clean_start = re.sub(r'^([a-zA-Z])\.\s+', '', clean_start)
+                    clean_start = re.sub(r'^([a-zA-Z])\.\s*', '', clean_start)
 
                     # We also aggressively strip all single lowercase letters followed by spaces/newlines
-                    # since Llama models often hallucinate "g" or "i" at the beginning of a tool callback response.
-                    clean_start = re.sub(r'^([a-z])\s+(?=[a-zA-Z])', '', clean_start)
+                    # since Llama models often hallucinate "c", "g" or "i" at the beginning of a tool callback response.
+                    # We make this more aggressive to catch stray letters even if they aren't followed by another word right away.
+                    clean_start = re.sub(r'^([a-z])[\s\n\r]+', '', clean_start)
 
                     # Also strip non-A/I uppercase letters
-                    clean_start = re.sub(r'^([B-HJ-Z])\s+(?=[a-zA-Z])', '', clean_start)
+                    clean_start = re.sub(r'^([B-HJ-Z])[\s\n\r]+', '', clean_start)
 
                     clean_start = clean_start.lstrip(' \n\r\t".,!?;:-')
 
@@ -1431,23 +1439,8 @@ def save_models_config(config):
                 if os.name == 'nt' and not shutil.which("lms"):
                     lms_cmd = "lms.cmd"
 
-                def format_lms_path(p):
-                    try:
-                        res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
-                        if res.returncode == 0:
-                            import json
-                            models = json.loads(res.stdout)
-                            normalized_p = p.replace('\\', '/')
-                            for model in models:
-                                if model.get('path') and model['path'] in normalized_p:
-                                    return model.get('modelKey', p)
-                    except Exception as e:
-                        print_and_log(f"[DEBUG] Failed to parse lms ls --json: {e}")
-
-                    return p
-
-                lms_main_id = format_lms_path(MAIN_MODEL_ID)
-                lms_dec_id = format_lms_path(DECISION_MODEL_ID)
+                lms_main_id = extract_model_key_from_path(MAIN_MODEL_ID)
+                lms_dec_id = extract_model_key_from_path(DECISION_MODEL_ID)
 
                 print_and_log(f"[DEBUG] Checking if Main Model exists at exact path: {MAIN_MODEL_ID}")
                 if not os.path.exists(MAIN_MODEL_ID):
@@ -1804,26 +1797,7 @@ def generate_presence_message(event_type):
         except: pass
 
         import os
-        import subprocess
-        def format_lms_path_presence(p):
-            lms_cmd = "lms"
-            if os.name == 'nt' and not __import__('shutil').which("lms"):
-                lms_cmd = "lms.cmd"
-            creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            try:
-                res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
-                if res.returncode == 0:
-                    import json
-                    models = json.loads(res.stdout)
-                    normalized_p = p.replace('\\', '/')
-                    for model in models:
-                        if model.get('path') and model['path'] in normalized_p:
-                            return model.get('modelKey', p)
-            except Exception:
-                pass
-            return os.path.basename(p)
-
-        main_id_clean = format_lms_path_presence(MAIN_MODEL_ID)
+        main_id_clean = extract_model_key_from_path(MAIN_MODEL_ID)
         query_model_id = MAIN_MODEL_ID
         try:
             for m in models.data:
@@ -2024,27 +1998,8 @@ def start_app():
             loaded_model_ids = [m.id for m in models.data]
 
             import os
-            import subprocess
-            def format_lms_path_loop(p):
-                lms_cmd = "lms"
-                if os.name == 'nt' and not __import__('shutil').which("lms"):
-                    lms_cmd = "lms.cmd"
-                creationflags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-                try:
-                    res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
-                    if res.returncode == 0:
-                        import json
-                        models = json.loads(res.stdout)
-                        normalized_p = p.replace('\\', '/')
-                        for model in models:
-                            if model.get('path') and model['path'] in normalized_p:
-                                return model.get('modelKey', p)
-                except Exception:
-                    pass
-                return os.path.basename(p)
-
-            main_id_clean = format_lms_path_loop(MAIN_MODEL_ID)
-            dec_id_clean = format_lms_path_loop(DECISION_MODEL_ID)
+            main_id_clean = extract_model_key_from_path(MAIN_MODEL_ID)
+            dec_id_clean = extract_model_key_from_path(DECISION_MODEL_ID)
 
             main_loaded = any(main_id_clean in m_id for m_id in loaded_model_ids)
             dec_loaded = any(dec_id_clean in m_id for m_id in loaded_model_ids)
@@ -2075,23 +2030,8 @@ def start_app():
                     if os.name == 'nt' and not shutil.which("lms"):
                         lms_cmd = "lms.cmd"
 
-                    def format_lms_path(p):
-                        try:
-                            res = subprocess.run([lms_cmd, "ls", "--json"], capture_output=True, text=True, creationflags=creationflags)
-                            if res.returncode == 0:
-                                import json
-                                models = json.loads(res.stdout)
-                                normalized_p = p.replace('\\', '/')
-                                for model in models:
-                                    if model.get('path') and model['path'] in normalized_p:
-                                        return model.get('modelKey', p)
-                        except Exception as e:
-                            print_and_log(f"[DEBUG] Failed to parse lms ls --json: {e}")
-
-                        return p
-
-                    lms_main_id = format_lms_path(MAIN_MODEL_ID)
-                    lms_dec_id = format_lms_path(DECISION_MODEL_ID)
+                    lms_main_id = extract_model_key_from_path(MAIN_MODEL_ID)
+                    lms_dec_id = extract_model_key_from_path(DECISION_MODEL_ID)
 
                     if not main_loaded:
                         print_and_log(f"[DEBUG] BOOT LOOP - Checking if Main Model exists at exact path: {MAIN_MODEL_ID}")
