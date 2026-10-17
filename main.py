@@ -1418,14 +1418,13 @@ def save_models_config(config):
                     lms_cmd = "lms.cmd"
 
                 def format_lms_path(p):
-                    # For `lms load`, passing the absolute file path directly fails in some LM Studio versions
-                    # that strictly expect the `Publisher/Model` string format matching the internal registry.
-                    # We will parse the file path backwards to construct the exact identifier if an absolute path is given.
-                    parts = p.replace('\\', '/').split('/')
-                    if len(parts) >= 3 and p.lower().endswith('.gguf'):
-                        # e.g., C:/.../Publisher/Model/file.gguf -> Publisher/Model
-                        return f"{parts[-3]}/{parts[-2]}"
-                    return p
+                    # For `lms load`, we need to pass the raw path with its native OS separators.
+                    # If we convert backslashes to forward slashes on Windows, the lms CLI fails to find the file.
+                    # We must also ensure we don't accidentally pass the 2-part string if the CLI expects an absolute path.
+                    # Using os.path.normpath ensures that whether the user pastes a Windows path, or the Tkinter BROWSE
+                    # button gives us a Unix path, it gets translated into the exact format the local OS CLI expects.
+                    import os
+                    return os.path.normpath(p)
 
                 lms_main_id = format_lms_path(MAIN_MODEL_ID)
                 lms_dec_id = format_lms_path(DECISION_MODEL_ID)
@@ -2019,14 +2018,13 @@ def start_app():
                         lms_cmd = "lms.cmd"
 
                     def format_lms_path(p):
-                        # For `lms load`, passing the absolute file path directly fails in some LM Studio versions
-                        # that strictly expect the `Publisher/Model` string format matching the internal registry.
-                        # We will parse the file path backwards to construct the exact identifier if an absolute path is given.
-                        parts = p.replace('\\', '/').split('/')
-                        if len(parts) >= 3 and p.lower().endswith('.gguf'):
-                            # e.g., C:/.../Publisher/Model/file.gguf -> Publisher/Model
-                            return f"{parts[-3]}/{parts[-2]}"
-                        return p
+                        # For `lms load`, we need to pass the raw path with its native OS separators.
+                        # If we convert backslashes to forward slashes on Windows, the lms CLI fails to find the file.
+                        # We must also ensure we don't accidentally pass the 2-part string if the CLI expects an absolute path.
+                        # Using os.path.normpath ensures that whether the user pastes a Windows path, or the Tkinter BROWSE
+                        # button gives us a Unix path, it gets translated into the exact format the local OS CLI expects.
+                        import os
+                        return os.path.normpath(p)
 
                     lms_main_id = format_lms_path(MAIN_MODEL_ID)
                     lms_dec_id = format_lms_path(DECISION_MODEL_ID)
