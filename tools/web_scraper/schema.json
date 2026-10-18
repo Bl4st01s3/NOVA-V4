@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "web_scraper",
+    "description": "Scrapes text content from a given website URL. Useful for reading documentation or articles from the internet.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "The full HTTP/HTTPS URL of the website to scrape."
+        }
+      },
+      "required": ["url"]
+    }
+  }
+}
