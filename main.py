@@ -1889,6 +1889,10 @@ def generate_presence_message(event_type):
 
 
 class PresenceRequestHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Override to suppress default HTTP server logging (e.g. GET /stream)
+        pass
+
     def _send_response(self, status, message):
         self.send_response(status)
         self.send_header('Content-type', 'application/json')
