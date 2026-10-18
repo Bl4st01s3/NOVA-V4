@@ -1,0 +1,16 @@
+{
+    "router_keywords": [
+        "read",
+        "file",
+        "document",
+        "content",
+        "what does it say",
+        "aloud",
+        "loud"
+    ],
+    "processing_messages": [
+        "Scanning the document...",
+        "Opening the file...",
+        "Reading the contents..."
+    ]
+}

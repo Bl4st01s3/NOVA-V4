@@ -1,0 +1,1 @@
+This tool reads the text content from local files. Use it when the user asks you to read a file out loud or asks what is inside a specific document. It handles all major text file types.
