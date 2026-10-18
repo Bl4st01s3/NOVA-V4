@@ -183,26 +183,42 @@ def ordinal(n):
 def format_date_british(d):
     return f"{ordinal(d.day)} of {d.strftime('%B')}, {d.year}"
 
-def format_date_american(d):
-    return f"{d.strftime('%B')} {ordinal(d.day)}, {d.year}"
-
-def _random_date_formatter(match):
+def _date_formatter_british(match):
     date_str = match.group(0)
     try:
         from datetime import datetime
-        import random
         # Assume DD/MM/YYYY format based on the UK context in the Order Tracker
         d = datetime.strptime(date_str, "%d/%m/%Y")
-        formats = [format_date_british, format_date_american]
-        chosen_format = random.choice(formats)
-        return chosen_format(d)
+        return format_date_british(d)
     except Exception:
         return date_str
 
 def _spell_out_long_numbers(match):
     # Strip any hyphens out before spacing so the TTS doesn't say "dash"
     clean_str = match.group(0).replace('-', '')
+    # If the string contains an 'x' (like dimensions), leave it alone so it doesn't space out
+    if 'x' in clean_str.lower():
+        return match.group(0)
     return " ".join(list(clean_str))
+
+def _expand_shorthand_units(text):
+    units = {
+        'v': ' volts', 'vdc': ' volts DC', 'vac': ' volts AC',
+        'a': ' amps', 'ma': ' milliamps', 'w': ' watts', 'mw': ' megawatts',
+        'hz': ' hertz', 'khz': ' kilohertz', 'mhz': ' megahertz', 'ghz': ' gigahertz',
+        'g': ' grams', 'kg': ' kilograms', 'mg': ' milligrams',
+        'mm': ' millimeters', 'cm': ' centimeters', 'm': ' meters',
+        's': ' seconds', 'ms': ' milliseconds',
+        'gb': ' gigabytes', 'tb': ' terabytes', 'mb': ' megabytes', 'kb': ' kilobytes',
+        'mah': ' milliamp hours', 'ah': ' amp hours'
+    }
+    def replacer(m):
+        num = m.group(1)
+        unit = m.group(2).lower()
+        if unit in units:
+            return num + units[unit]
+        return m.group(0)
+    return re.sub(r'\b(\d+(?:\.\d+)?)([a-zA-Z]+)\b', replacer, text)
 
 def clean_text_for_speech(text):
     """
@@ -210,8 +226,14 @@ def clean_text_for_speech(text):
     when read aloud by the TTS engine. Applies phonetic overrides, formats dates natively,
     and spaces out tracking numbers.
     """
-    # Randomly format DD/MM/YYYY dates into spoken words
-    text = re.sub(r'\b\d{1,2}/\d{1,2}/\d{4}\b', _random_date_formatter, text)
+    # Replace dimension 'x' with ' by ' (e.g. 40x40x20 -> 40 by 40 by 20)
+    text = re.sub(r'(?i)\b(\d+)\s*x\s*(\d+)(?:\s*x\s*(\d+))?\b', lambda m: f"{m.group(1)} by {m.group(2)}" + (f" by {m.group(3)}" if m.group(3) else ""), text)
+
+    # Expand shorthand engineering units (e.g. 5v -> 5 volts)
+    text = _expand_shorthand_units(text)
+
+    # Format DD/MM/YYYY dates into spoken British words
+    text = re.sub(r'\b\d{1,2}/\d{1,2}/\d{4}\b', _date_formatter_british, text)
 
     # Space out long alphanumeric strings (6+ chars, optionally containing hyphens, containing at least one digit) like tracking numbers
     text = re.sub(r'\b[A-Z0-9\-]{6,}\b', lambda m: _spell_out_long_numbers(m) if any(c.isdigit() for c in m.group(0)) else m.group(0), text, flags=re.IGNORECASE)
