@@ -1,0 +1,17 @@
+{
+  "type": "function",
+  "function": {
+    "name": "read_file_aloud",
+    "description": "Reads the content of a local text file (.txt, .md, .csv, .json, etc) and outputs it so the system can read it out loud to the user.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "The absolute or relative path to the file to read."
+        }
+      },
+      "required": ["file_path"]
+    }
+  }
+}
