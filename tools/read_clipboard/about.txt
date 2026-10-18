@@ -1,0 +1,1 @@
+This tool accesses the user's OS clipboard. Use it when the user explicitly asks you to read, analyze, or summarize whatever they just copied, or if they mention their clipboard. It will return the raw text currently stored in the clipboard (which could be a URL, a paragraph, or a file path).

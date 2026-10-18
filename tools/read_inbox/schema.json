@@ -1,0 +1,22 @@
+{
+  "type": "function",
+  "function": {
+    "name": "read_inbox",
+    "description": "Scans the local 'NOVA_Inbox' folder on the user's desktop. It can either list the files currently in the inbox, or read the text content of a specific file inside it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "What to do with the inbox. Either 'list_files' or 'read_file'.",
+          "enum": ["list_files", "read_file"]
+        },
+        "filename": {
+          "type": "string",
+          "description": "If action is 'read_file', provide the exact name of the file to read."
+        }
+      },
+      "required": ["action"]
+    }
+  }
+}
