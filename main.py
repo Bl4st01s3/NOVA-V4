@@ -551,33 +551,59 @@ def build_tools_array():
     return tools_array
 
 
-def intent_router(user_text):
+def intent_router(user_text, active_dec_id):
     """
-    Scans the user text against tool keywords to determine if a tool is needed.
+    Uses the Decision Model (Liquid AI) to dynamically route the user's intent.
     Returns the tool_name if matched, otherwise None.
     """
     import json
     import os
 
-    text_lower = user_text.lower()
     available_tools = get_available_tools()
+    tool_descriptions = []
 
     for tool in available_tools:
         if not active_llm_tools.get(tool, True):
             continue
-
-        config_path = os.path.join("tools", tool, "config.json")
-        if os.path.exists(config_path):
+        about_path = os.path.join("tools", tool, "about.txt")
+        desc = f"{tool}: A tool."
+        if os.path.exists(about_path):
             try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                    keywords = config.get("router_keywords", [])
-                    # Simple keyword matching for now
-                    for keyword in keywords:
-                        if keyword.lower() in text_lower:
-                            return tool
-            except Exception as e:
-                log_error(f"Failed to read keywords for {tool}: {e}")
+                with open(about_path, "r", encoding="utf-8") as f:
+                    desc = f"{tool}: {f.read().strip()}"
+            except: pass
+        tool_descriptions.append(desc)
+
+    if not tool_descriptions:
+        return None
+
+    tools_list_str = "\n".join(tool_descriptions)
+
+    system_prompt = (
+        "You are an intent routing engine. Your job is to select the correct tool to answer the user's prompt.\n"
+        "Here are the available tools:\n\n"
+        f"{tools_list_str}\n\n"
+        "Analyze the user's prompt. If a tool is required to fulfill the request, output ONLY the exact name of the tool (e.g., 'order_tracking'). "
+        "If NO tool is required, output exactly 'none'. DO NOT output any other text, reasoning, or markdown."
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model=active_dec_id,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_text}
+            ],
+            temperature=0.1
+        )
+        ai_text = response.choices[0].message.content.strip().lower()
+
+        # Verify if the LLM returned a valid tool name
+        for tool in available_tools:
+            if active_llm_tools.get(tool, True) and tool.lower() in ai_text:
+                return tool
+    except Exception as e:
+        log_error(f"Intent routing failed: {e}")
 
     return None
 
@@ -638,11 +664,11 @@ def _process_llm_response_inner():
         if len(conversation_history) > 0 and conversation_history[-1]["role"] == "user":
             last_user_text = conversation_history[-1]["content"]
 
-        # 1. Run the Intent Router to see if a tool is needed based on keywords
+        # 1. Run the Intent Router to see if a tool is needed dynamically
         # Only route if it's not the hidden boot sequence
         tool_name = None
         if "[SYSTEM_BOOT_SEQUENCE]" not in last_user_text and "The system has just successfully booted up." not in last_user_text:
-             tool_name = intent_router(last_user_text)
+             tool_name = intent_router(last_user_text, active_dec_id)
 
         # 2. Stage 1 Execution: The Tool Pathway
         if tool_name:
@@ -710,6 +736,8 @@ def _process_llm_response_inner():
                             with open(config_path, "r", encoding="utf-8") as f:
                                 config = json.load(f)
                                 messages = config.get("processing_messages", [])
+                                if isinstance(messages, str):
+                                    messages = [m.strip() for m in messages.split(',') if m.strip()]
                                 if messages:
                                     holding_msg = random.choice(messages)
                                     print_and_log(f"NOVA (Holding): {holding_msg}")
