@@ -888,8 +888,31 @@ def _process_llm_response_inner():
                     tool_output = f"Error: Tool {tool_name} not found."
                     safe_add_activity_log('system', f"Error: Tool {tool_name} not found.")
 
-            # Stage 3: Spoon-feed the result to the LLM
-            # We replace the user's last message with the spoon-fed prompt.
+            # Stage 3: Direct Bypass or Spoon-feed
+
+            # Tools that should skip the LLM summarization step and be read out exactly as-is:
+            direct_read_tools = ["read_file_aloud", "read_clipboard", "read_inbox"]
+
+            if tool_name in direct_read_tools and "error output:" not in tool_output.lower() and not tool_output.startswith("Error:"):
+                # Bypass the LLM entirely and push the exact text to the chat and TTS
+                print_and_log(f"NOVA (Direct Output): {tool_output}")
+                conversation_history.append({"role": "assistant", "content": tool_output})
+                save_chat_history()
+
+                message_queue.put({"type": "stream_start"})
+                message_queue.put({"type": "stream_chunk", "text": tool_output})
+                message_queue.put({"type": "stream_end"})
+
+                clean_speech = clean_text_for_speech(tool_output)
+                if clean_speech:
+                    tts_queue.put(clean_speech)
+
+                try: eel.setNovaState('idle')
+                except: pass
+
+                return # Exit the background worker completely
+
+            # Normal behavior: We replace the user's last message with the spoon-fed prompt.
             spoon_fed_prompt = f"The user asked: {last_user_text}\n\nHere is the system data:\n{tool_output}\n\nReply to the user using ONLY this data. Do not narrate your process. Give a direct conversational answer. If the user asks you to perform an action (like editing, updating, or deleting) that is not reflected in the provided system data, politely inform them that you lack the capability to do so, and instead proactively offer to assist them with a related task that you ARE capable of performing using your available tools."
 
             # Temporarily replace the last history item
