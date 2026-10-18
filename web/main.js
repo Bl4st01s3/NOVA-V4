@@ -21,6 +21,36 @@ document.addEventListener("DOMContentLoaded", () => {
     const sendBtn = document.getElementById('send-btn');
     const micBtn = document.getElementById('mic-btn');
 
+    // Setup Drag-and-Drop for the Chat Container
+    chatContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        chatContainer.style.border = '2px dashed var(--neon-cyan)';
+    });
+    chatContainer.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        chatContainer.style.border = 'none';
+    });
+    chatContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        chatContainer.style.border = 'none';
+
+        let droppedText = e.dataTransfer.getData('text');
+
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            // If they drop a file, we grab its absolute path.
+            // Note: Modern browsers restrict full file paths for security.
+            // In a local Eel app without web security flags, the path property is sometimes available.
+            // If it's not, we'll gracefully fallback to asking them to use the clipboard.
+            const file = e.dataTransfer.files[0];
+            const path = file.path || file.name;
+            userInput.value += ` ${path} `;
+            userInput.focus();
+        } else if (droppedText) {
+            userInput.value += ` ${droppedText} `;
+            userInput.focus();
+        }
+    });
+
     // Global reference to the currently streaming message div
     window.activeStreamingContentDiv = null;
 
