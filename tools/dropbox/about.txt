@@ -1,0 +1,1 @@
+This tool manages the 'Drop Box', which holds shortcuts to files the user has dragged and dropped into the NOVA UI. Use it when the user asks you to check the drop box, read a file they just dropped in, or resume reading a file from the drop box. If you don't know the file name, use 'list_files' first. Then use 'read_file' to read the contents.

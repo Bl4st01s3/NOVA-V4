@@ -9,6 +9,10 @@
         "file_path": {
           "type": "string",
           "description": "The absolute or relative path to the file to read."
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "Optional line number to start reading from. Useful if the user asks you to resume reading or skip ahead."
         }
       },
       "required": ["file_path"]

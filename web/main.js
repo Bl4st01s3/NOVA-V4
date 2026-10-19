@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const sendBtn = document.getElementById('send-btn');
     const micBtn = document.getElementById('mic-btn');
 
-    // Setup Drag-and-Drop for the Chat Container
+    // Setup Drag-and-Drop for the Chat Container (Pasting paths/links)
     chatContainer.addEventListener('dragover', (e) => {
         e.preventDefault();
         chatContainer.style.border = '2px dashed var(--neon-cyan)';
@@ -33,16 +33,11 @@ document.addEventListener("DOMContentLoaded", () => {
     chatContainer.addEventListener('drop', (e) => {
         e.preventDefault();
         chatContainer.style.border = 'none';
-
         let droppedText = e.dataTransfer.getData('text');
-
         if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            // If they drop a file, we grab its absolute path.
-            // Note: Modern browsers restrict full file paths for security.
-            // In a local Eel app without web security flags, the path property is sometimes available.
-            // If it's not, we'll gracefully fallback to asking them to use the clipboard.
             const file = e.dataTransfer.files[0];
-            const path = file.path || file.name;
+            // Provide a graceful fallback string if the browser restricts full paths
+            const path = file.path || file.name || "File dropped";
             userInput.value += ` ${path} `;
             userInput.focus();
         } else if (droppedText) {
@@ -50,6 +45,88 @@ document.addEventListener("DOMContentLoaded", () => {
             userInput.focus();
         }
     });
+
+    // --- Drop Box Panel UI Logic ---
+    const dropboxPanel = document.getElementById('dropbox-panel');
+    const dropboxToggle = document.getElementById('dropbox-toggle');
+    const dropboxZone = document.getElementById('dropbox-zone');
+
+    dropboxToggle.addEventListener('click', () => {
+        dropboxPanel.classList.toggle('open');
+    });
+
+    dropboxZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropboxZone.classList.add('dragover');
+    });
+
+    dropboxZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        dropboxZone.classList.remove('dragover');
+    });
+
+    dropboxZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropboxZone.classList.remove('dragover');
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                const file = e.dataTransfer.files[i];
+                // Provide a graceful fallback to prevent silent failures if web security blocks absolute paths
+                const path = file.path || null;
+                if (path) {
+                    await eel.add_to_dropbox(path)();
+                } else {
+                    console.warn("Browser security prevented absolute path access. Cannot add to drop box.");
+                    addActivityLog('system', "Error: Cannot add file to Drop Box. Please use the Clipboard Tool (Ctrl+C) instead, as the browser blocked absolute path access.");
+                }
+            }
+            refreshDropboxList();
+        }
+    });
+
+    document.getElementById('dropbox-filter').addEventListener('input', (e) => {
+        const filterStr = e.target.value.toLowerCase();
+        const items = document.querySelectorAll('.dropbox-item');
+        items.forEach(item => {
+            if (item.dataset.filename.toLowerCase().includes(filterStr)) {
+                item.style.display = 'flex';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    });
+
+    window.refreshDropboxList = async function() {
+        const listDiv = document.getElementById('dropbox-list');
+        listDiv.innerHTML = '';
+        try {
+            const files = await eel.get_dropbox_files()();
+            files.forEach(f => {
+                const item = document.createElement('div');
+                item.className = 'dropbox-item';
+                item.dataset.filename = f.name;
+
+                const label = document.createElement('span');
+                label.innerText = f.name;
+                label.title = f.path; // Tooltip showing absolute path
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-btn';
+                delBtn.innerHTML = '✖';
+                delBtn.onclick = async () => {
+                    await eel.remove_from_dropbox(f.name)();
+                    refreshDropboxList();
+                };
+
+                item.appendChild(label);
+                item.appendChild(delBtn);
+                listDiv.appendChild(item);
+            });
+        } catch(e) {}
+    }
+
+    // Initial fetch of dropbox files on load
+    setTimeout(refreshDropboxList, 1000);
 
     // Global reference to the currently streaming message div
     window.activeStreamingContentDiv = null;

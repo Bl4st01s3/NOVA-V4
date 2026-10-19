@@ -10,6 +10,7 @@ def run():
     try:
         args = json.loads(sys.argv[1])
         file_path = args.get("file_path", "")
+        start_line = args.get("start_line")
     except Exception as e:
         print(f"Error parsing arguments: {e}")
         return
@@ -28,7 +29,17 @@ def run():
 
     try:
         with open(file_path, "r", encoding="utf-8") as f:
-            content = f.read()
+            lines = f.readlines()
+
+        if start_line and start_line > 0:
+            idx = start_line - 1
+            if idx < len(lines):
+                lines = lines[idx:]
+            else:
+                print(f"Error: File '{os.path.basename(file_path)}' does not have {start_line} lines.")
+                return
+
+        content = "".join(lines)
 
         # We cap the reading size so it doesn't flood the LLM context or TTS queue infinitely.
         # 5000 characters is a safe limit for a quick readout.
@@ -36,7 +47,7 @@ def run():
             content = content[:5000] + "\n\n...[Content truncated for length]"
 
         if not content.strip():
-            print(f"The file '{os.path.basename(file_path)}' is empty.")
+            print(f"The file '{os.path.basename(file_path)}' is empty or has no content after the requested start line.")
             return
 
         print(f"Content of {os.path.basename(file_path)}:\n\n{content}")
