@@ -1,0 +1,26 @@
+{
+  "type": "function",
+  "function": {
+    "name": "dropbox",
+    "description": "Manages the local NOVA Drop Box where the user links files. It can either list the files currently registered in the Drop Box, or read the text content of a specific file inside it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "What to do with the Drop Box. Either 'list_files' or 'read_file'.",
+          "enum": ["list_files", "read_file"]
+        },
+        "filename": {
+          "type": "string",
+          "description": "If action is 'read_file', provide the exact name of the file to read."
+        },
+        "start_line": {
+          "type": "integer",
+          "description": "Optional line number to start reading from. Useful if the user asks you to resume reading or skip ahead."
+        }
+      },
+      "required": ["action"]
+    }
+  }
+}

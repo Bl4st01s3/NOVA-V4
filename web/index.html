@@ -385,6 +385,27 @@
         </div>
     </div>
 
+    <!-- Sliding Drop Box Panel -->
+    <div id="dropbox-panel" class="dropbox-panel">
+        <button id="dropbox-toggle" class="dropbox-toggle">
+            <span class="arrow">◀</span>
+        </button>
+        <div class="dropbox-content">
+            <h3 style="color: var(--neon-cyan); margin-top: 0;">NOVA Drop Box</h3>
+            <p style="font-size: 0.85em; color: #888; margin-bottom: 15px;">Drag & drop files here to link them.</p>
+
+            <input type="text" id="dropbox-filter" class="cyber-input" placeholder="Filter files..." style="width: 100%; margin-bottom: 10px;">
+
+            <div id="dropbox-list" class="dropbox-list">
+                <!-- File items dynamically injected here -->
+            </div>
+
+            <div id="dropbox-zone" class="dropbox-zone">
+                DROP FILES HERE
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script type="text/javascript" src="/eel.js"></script>
     <script src="main.js"></script>

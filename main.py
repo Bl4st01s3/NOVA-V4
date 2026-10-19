@@ -891,7 +891,7 @@ def _process_llm_response_inner():
             # Stage 3: Direct Bypass or Spoon-feed
 
             # Tools that should skip the LLM summarization step and be read out exactly as-is:
-            direct_read_tools = ["read_file_aloud", "read_clipboard", "read_inbox"]
+            direct_read_tools = ["read_file_aloud", "read_clipboard", "dropbox"]
 
             if tool_name in direct_read_tools and "error output:" not in tool_output.lower() and not tool_output.startswith("Error:"):
                 # Bypass the LLM entirely and push the exact text to the chat and TTS
@@ -903,9 +903,15 @@ def _process_llm_response_inner():
                 message_queue.put({"type": "stream_chunk", "text": tool_output})
                 message_queue.put({"type": "stream_end"})
 
-                clean_speech = clean_text_for_speech(tool_output)
-                if clean_speech:
-                    tts_queue.put(clean_speech)
+                # We chunk the text by sentences before sending it to the TTS queue to prevent
+                # the Piper engine from hanging on a massive 5000 character payload.
+                import re
+                sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', tool_output)
+                for sentence in sentences:
+                    if sentence.strip():
+                        clean_speech = clean_text_for_speech(sentence.strip())
+                        if clean_speech:
+                            tts_queue.put(clean_speech)
 
                 try: eel.setNovaState('idle')
                 except: pass
@@ -1464,6 +1470,62 @@ def update_briefing_prefs(prefs):
     global briefing_prefs
     briefing_prefs.update(prefs)
     print_and_log(f"Updated Briefing Preferences: {briefing_prefs}")
+
+# --- Drop Box Registry Logic ---
+DROPBOX_DIR = "dropbox"
+DROPBOX_REGISTRY = os.path.join(DROPBOX_DIR, "registry.json")
+
+def init_dropbox():
+    if not os.path.exists(DROPBOX_DIR):
+        os.makedirs(DROPBOX_DIR)
+    if not os.path.exists(DROPBOX_REGISTRY):
+        with open(DROPBOX_REGISTRY, "w", encoding="utf-8") as f:
+            json.dump({}, f)
+
+@eel.expose
+def get_dropbox_files():
+    """Returns a list of dicts: [{name: '...', path: '...'}, ...]"""
+    init_dropbox()
+    try:
+        with open(DROPBOX_REGISTRY, "r", encoding="utf-8") as f:
+            reg = json.load(f)
+            return [{"name": k, "path": v} for k, v in reg.items()]
+    except Exception as e:
+        log_error(f"Failed to read dropbox registry: {e}")
+        return []
+
+@eel.expose
+def add_to_dropbox(absolute_path):
+    """Adds a file path to the dropbox registry (simulating a shortcut)."""
+    init_dropbox()
+    if not os.path.exists(absolute_path):
+        return False
+    name = os.path.basename(absolute_path)
+    try:
+        with open(DROPBOX_REGISTRY, "r", encoding="utf-8") as f:
+            reg = json.load(f)
+        reg[name] = absolute_path
+        with open(DROPBOX_REGISTRY, "w", encoding="utf-8") as f:
+            json.dump(reg, f, indent=4)
+        return True
+    except Exception as e:
+        log_error(f"Failed to add to dropbox: {e}")
+        return False
+
+@eel.expose
+def remove_from_dropbox(filename):
+    init_dropbox()
+    try:
+        with open(DROPBOX_REGISTRY, "r", encoding="utf-8") as f:
+            reg = json.load(f)
+        if filename in reg:
+            del reg[filename]
+            with open(DROPBOX_REGISTRY, "w", encoding="utf-8") as f:
+                json.dump(reg, f, indent=4)
+        return True
+    except Exception as e:
+        log_error(f"Failed to remove from dropbox: {e}")
+        return False
 
 # --- Voice Profile Persistence ---
 VOICE_PROFILES_FILE = "voice_profiles.json"

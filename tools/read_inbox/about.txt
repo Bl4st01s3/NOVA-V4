@@ -1,1 +1,0 @@
-This tool manages the 'NOVA_Inbox' folder located on the user's Desktop. Use it when the user says they dropped a file in your inbox or asks you to check your inbox. If you don't know the file name, use 'list_files' first. Then use 'read_file' to read the contents.
