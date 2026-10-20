@@ -1416,12 +1416,31 @@ def get_tool_config(tool_name):
         return None
 
     config_path = os.path.join("tools", tool_name, "config.json")
+    default_config_path = os.path.join("tools", tool_name, "config.default.json")
+
+    # If the user hasn't created a config yet, but a default template exists, copy it over
+    if not os.path.exists(config_path) and os.path.exists(default_config_path):
+        import shutil
+        try:
+            shutil.copy(default_config_path, config_path)
+            print_and_log(f"Generated default config.json for tool {tool_name}")
+        except Exception as e:
+            log_error(f"Failed to copy default config for {tool_name}: {e}")
+
     if os.path.exists(config_path):
         try:
             with open(config_path, "r", encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print_and_log(f"[ERROR] Could not load config for {tool_name}: {e}")
+
+    # If there is no config but there is a default we couldn't copy, return the default so UI works
+    if os.path.exists(default_config_path):
+        try:
+            with open(default_config_path, "r", encoding='utf-8') as f:
+                return json.load(f)
+        except: pass
+
     return None
 
 @eel.expose
