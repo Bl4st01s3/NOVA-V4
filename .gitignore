@@ -7,3 +7,8 @@ stream_safe_tools.json
 tts_config.json
 chat_history.json
 activity_log.json
+tools/*/config.json
+models_config.json
+execution_stats.json
+processing_msg_prefs.json
+dropbox/registry.json
